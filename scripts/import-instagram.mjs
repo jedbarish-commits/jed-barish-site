@@ -36,7 +36,7 @@ const PUBLISH = flag("publish");
 // which makes an otherwise valid token fail with an opaque 401.
 const TOKEN = process.env.EMDASH_TOKEN?.trim();
 
-if (!EXPORT_DIR) {
+if (!EXPORT_DIR && !flag("fix-dates")) {
 	console.error("Missing --export <path to unzipped Instagram export>");
 	process.exit(1);
 }
@@ -257,7 +257,67 @@ async function alreadyImported() {
 	return seen;
 }
 
+/**
+ * Publishing from the admin stamps published_at with "now", so an imported
+ * back catalogue ends up all dated the day it was imported. This rewrites
+ * published_at to the photo's taken_at, which is the date it was actually
+ * posted on Instagram. Safe to re-run.
+ */
+async function fixDates() {
+	await preflight();
+
+	const items = [];
+	let cursor;
+	do {
+		const qs = new URLSearchParams({ limit: "100" });
+		if (cursor) qs.set("cursor", cursor);
+		const { ok, status, body } = await api(`/_emdash/api/content/photos?${qs}`);
+		if (!ok) throw new Error(`Could not list photos (HTTP ${status}).`);
+		items.push(...(body?.data?.items ?? []));
+		cursor = body?.data?.nextCursor;
+	} while (cursor);
+
+	let fixed = 0;
+	let skipped = 0;
+	for (const item of items) {
+		const taken = item?.data?.taken_at;
+		if (!taken) {
+			skipped++;
+			continue;
+		}
+		const want = new Date(taken).toISOString();
+		if (item.publishedAt && new Date(item.publishedAt).toISOString() === want) {
+			skipped++;
+			continue;
+		}
+		if (item.status !== "published") {
+			// Nothing to correct until it is published.
+			skipped++;
+			continue;
+		}
+		const res = await api(`/_emdash/api/content/photos/${item.id}/publish`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ publishedAt: want }),
+		});
+		if (res.ok) {
+			fixed++;
+			process.stdout.write(`\r  redated ${fixed}…`);
+		} else {
+			console.warn(`\n  failed ${item.id}: HTTP ${res.status}`);
+		}
+	}
+	console.log(
+		`\n\nDone. ${fixed} redated to their original post date, ${skipped} left alone.`,
+	);
+}
+
 async function main() {
+	if (flag("fix-dates")) {
+		await fixDates();
+		return;
+	}
+
 	const root = path.resolve(EXPORT_DIR.replace(/^~/, process.env.HOME ?? "~"));
 	if (!existsSync(root)) {
 		console.error(`Export folder not found: ${root}`);

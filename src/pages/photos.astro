@@ -5,6 +5,17 @@ import MobileShell from "../layouts/MobileShell.astro";
 
 const { entries: photos, cacheHint } = await getEmDashCollection("photos", {
 	orderBy: { published_at: "desc" },
+	limit: 200,
+});
+
+// Imported photos were all published today but taken over many years, so
+// published_at says nothing useful about ordering. Sort on taken_at.
+photos.sort((a, b) => {
+	const at = (e: { data: Record<string, unknown> }) => {
+		const v = (e.data.taken_at ?? e.data.publishedAt) as Date | string | null;
+		return v ? new Date(v).getTime() : 0;
+	};
+	return at(b) - at(a);
 });
 
 if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
