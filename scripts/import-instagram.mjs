@@ -16,6 +16,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import process from "node:process";
 
 const args = process.argv.slice(2);
@@ -97,6 +98,7 @@ async function findPostsFiles(root) {
 }
 
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp", ".heic"]);
+const VIDEO_EXT = new Set([".mp4"]);
 
 function mimeFor(file) {
 	const ext = path.extname(file).toLowerCase();
@@ -107,6 +109,7 @@ function mimeFor(file) {
 			".png": "image/png",
 			".webp": "image/webp",
 			".heic": "image/heic",
+			".mp4": "video/mp4",
 		}[ext] ?? "application/octet-stream"
 	);
 }
@@ -121,13 +124,13 @@ function mimeFor(file) {
  *   posts.json    media live under a label: { label_values: [{ label: "Media",
  *                 media: [...] }, { label: "Caption", value }], timestamp }
  */
-function collectPhotos(posts) {
+function collectMedia(posts, extensions) {
 	const out = [];
 
 	const push = (item, fallbackCaption, fallbackTs, siblings) => {
 		const uri = item.uri;
 		if (!uri) return;
-		if (!IMAGE_EXT.has(path.extname(uri).toLowerCase())) return; // skip video
+		if (!extensions.has(path.extname(uri).toLowerCase())) return;
 		const caption = fixEncoding(item.title ?? "") || fallbackCaption;
 		const ts = item.creation_timestamp ?? fallbackTs ?? null;
 		out.push({
@@ -281,19 +284,19 @@ async function preflight() {
 	process.exit(1);
 }
 
-async function alreadyImported() {
+async function alreadyImported(collection = "photos") {
 	const seen = new Set();
 	let cursor;
 	do {
 		const qs = new URLSearchParams({ limit: "100" });
 		if (cursor) qs.set("cursor", cursor);
-		const { ok, status, body } = await api(`/_emdash/api/content/photos?${qs}`);
+		const { ok, status, body } = await api(`/_emdash/api/content/${collection}?${qs}`);
 		// Never swallow this: an unreadable list means dedupe is blind, and
 		// continuing would re-import everything on the next run.
 		if (!ok) {
 			throw new Error(
-				`Could not list existing photos (HTTP ${status}). Aborting rather than ` +
-					"risk duplicate imports.",
+				`Could not list existing ${collection} (HTTP ${status}). Aborting rather ` +
+					"than risk duplicate imports.",
 			);
 		}
 		for (const item of body?.data?.items ?? []) {
@@ -319,7 +322,7 @@ async function fixDates() {
 	do {
 		const qs = new URLSearchParams({ limit: "100" });
 		if (cursor) qs.set("cursor", cursor);
-		const { ok, status, body } = await api(`/_emdash/api/content/photos?${qs}`);
+		const { ok, status, body } = await api(`/_emdash/api/content/${collection}?${qs}`);
 		if (!ok) throw new Error(`Could not list photos (HTTP ${status}).`);
 		items.push(...(body?.data?.items ?? []));
 		cursor = body?.data?.nextCursor;
@@ -360,6 +363,183 @@ async function fixDates() {
 	);
 }
 
+/** Upload one local file into the media library, returning its media id. */
+async function uploadFile(absPath, alt) {
+	const bytes = await readFile(absPath);
+	const form = new FormData();
+	form.append(
+		"file",
+		new Blob([bytes], { type: mimeFor(absPath) }),
+		path.basename(absPath),
+	);
+	const up = await api("/_emdash/api/media", { method: "POST", body: form });
+	if (!up.ok) {
+		throw new Error(`media ${up.status}: ${JSON.stringify(up.body).slice(0, 200)}`);
+	}
+	const id = up.body?.data?.item?.id ?? up.body?.item?.id;
+	if (!id) throw new Error("no media id returned");
+	if (alt) {
+		await api(`/_emdash/api/media/${id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ alt }),
+		}).catch(() => {});
+	}
+	return id;
+}
+
+/**
+ * Instagram exports ship no poster image for videos, so pull a frame with
+ * ffmpeg. One second in, falling back to the very first frame for clips
+ * shorter than that. A poster is optional — a video without one still imports.
+ */
+async function posterFrame(videoPath) {
+	const { execFile } = await import("node:child_process");
+	const { promisify } = await import("node:util");
+	const run = promisify(execFile);
+	const out = path.join(
+		os.tmpdir(),
+		`ig-poster-${path.basename(videoPath, ".mp4")}.jpg`,
+	);
+	for (const seek of ["1", "0"]) {
+		try {
+			await run("ffmpeg", ["-ss", seek, "-i", videoPath, "-frames:v", "1", "-q:v", "3", "-y", out]);
+			if (existsSync(out)) return out;
+		} catch {
+			// try the next seek point
+		}
+	}
+	return null;
+}
+
+/** Gather one media kind out of every posts file, deduplicated across them. */
+async function gather(root, files, extensions) {
+	const byUri = new Map();
+	for (const file of files) {
+		const parsed = JSON.parse(await readFile(file, "utf8"));
+		for (const item of collectMedia(parsed, extensions)) {
+			// Files overlap; prefer whichever sighting actually has a caption.
+			const existing = byUri.get(item.uri);
+			if (!existing || (!existing.caption && item.caption)) {
+				byUri.set(item.uri, item);
+			}
+		}
+	}
+	const out = [...byUri.values()];
+	out.sort((a, b) => (a.takenAt?.getTime() ?? 0) - (b.takenAt?.getTime() ?? 0));
+	return out;
+}
+
+async function importPhotos(root, items) {
+	const seen = await alreadyImported("photos");
+	console.log(`Photos: ${seen.size} already imported.`);
+
+	let created = 0, skipped = 0, failed = 0;
+	for (const photo of items) {
+		if (seen.has(photo.uri)) { skipped++; continue; }
+		const abs = path.join(root, photo.uri);
+		if (!existsSync(abs)) { console.warn(`  missing file: ${photo.uri}`); failed++; continue; }
+
+		const title = titleFrom(photo.caption, photo.takenAt);
+		try {
+			const mediaId = await uploadFile(abs, title);
+			const create = await api("/_emdash/api/content/photos", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					data: {
+						title,
+						caption: photo.caption || undefined,
+						image: mediaId,
+						source_ref: photo.uri,
+						taken_at: photo.takenAt?.toISOString(),
+					},
+				}),
+			});
+			if (!create.ok) throw new Error(`create ${create.status}: ${JSON.stringify(create.body).slice(0, 200)}`);
+			if (PUBLISH) {
+				const id = create.body?.data?.item?.id;
+				await api(`/_emdash/api/content/photos/${id}/publish`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(photo.takenAt ? { publishedAt: photo.takenAt.toISOString() } : {}),
+				});
+			}
+			created++;
+			process.stdout.write(`\r  photos imported ${created}…`);
+		} catch (error) {
+			if (error instanceof AuthLostError) throw error;
+			failed++;
+			console.warn(`\n  failed: ${photo.uri}\n    ${error.message}`);
+		}
+	}
+	console.log(`\nPhotos: ${created} imported, ${skipped} already present, ${failed} failed.`);
+}
+
+/**
+ * Videos go into the Videos collection (slug "posts") alongside the YouTube
+ * entries, with the file in video_file and an ffmpeg-extracted poster as the
+ * featured image.
+ */
+async function importVideos(root, items) {
+	const seen = await alreadyImported("posts");
+	console.log(`Videos: ${seen.size} already imported.`);
+
+	let created = 0, skipped = 0, failed = 0;
+	for (const video of items) {
+		if (seen.has(video.uri)) { skipped++; continue; }
+		const abs = path.join(root, video.uri);
+		if (!existsSync(abs)) { console.warn(`  missing file: ${video.uri}`); failed++; continue; }
+
+		const title = titleFrom(video.caption, video.takenAt);
+		try {
+			const videoId = await uploadFile(abs, title);
+
+			// Poster is best-effort: a video without one still imports fine.
+			let posterId;
+			const poster = await posterFrame(abs);
+			if (poster) {
+				try {
+					posterId = await uploadFile(poster, title);
+				} catch {
+					posterId = undefined;
+				}
+			}
+
+			const create = await api("/_emdash/api/content/posts", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					data: {
+						title,
+						excerpt: video.caption || undefined,
+						video_file: videoId,
+						featured_image: posterId,
+						source_ref: video.uri,
+						taken_at: video.takenAt?.toISOString(),
+					},
+				}),
+			});
+			if (!create.ok) throw new Error(`create ${create.status}: ${JSON.stringify(create.body).slice(0, 200)}`);
+			if (PUBLISH) {
+				const id = create.body?.data?.item?.id;
+				await api(`/_emdash/api/content/posts/${id}/publish`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(video.takenAt ? { publishedAt: video.takenAt.toISOString() } : {}),
+				});
+			}
+			created++;
+			process.stdout.write(`\r  videos imported ${created}…`);
+		} catch (error) {
+			if (error instanceof AuthLostError) throw error;
+			failed++;
+			console.warn(`\n  failed: ${video.uri}\n    ${error.message}`);
+		}
+	}
+	console.log(`\nVideos: ${created} imported, ${skipped} already present, ${failed} failed.`);
+}
+
 async function main() {
 	if (flag("fix-dates")) {
 		await fixDates();
@@ -383,124 +563,33 @@ async function main() {
 	console.log(`Found ${files.length} posts file(s):`);
 	for (const f of files) console.log(`  ${path.relative(root, f)}`);
 
-	const byUri = new Map();
-	for (const file of files) {
-		const parsed = JSON.parse(await readFile(file, "utf8"));
-		for (const photo of collectPhotos(parsed)) {
-			// Files overlap; prefer whichever sighting actually has a caption.
-			const existing = byUri.get(photo.uri);
-			if (!existing || (!existing.caption && photo.caption)) {
-				byUri.set(photo.uri, photo);
-			}
-		}
-	}
-	let photos = [...byUri.values()];
-	photos.sort((a, b) => (a.takenAt?.getTime() ?? 0) - (b.takenAt?.getTime() ?? 0));
+	const only = opt("only");
+	const wantPhotos = only !== "videos";
+	const wantVideos = only !== "photos";
 
-	console.log(`\n${photos.length} image(s) in the export.`);
-	if (LIMIT) photos = photos.slice(0, LIMIT);
+	let photos = wantPhotos ? await gather(root, files, IMAGE_EXT) : [];
+	let videos = wantVideos ? await gather(root, files, VIDEO_EXT) : [];
+	console.log(`\n${photos.length} image(s), ${videos.length} video(s) in the export.`);
+	if (LIMIT) {
+		photos = photos.slice(0, LIMIT);
+		videos = videos.slice(0, LIMIT);
+	}
 
 	if (DRY_RUN) {
 		console.log("\n--dry-run: nothing will be written.\n");
-		for (const p of photos.slice(0, 20)) {
-			const when = p.takenAt ? p.takenAt.toISOString().slice(0, 10) : "(no date)";
-			console.log(`  ${when}  ${titleFrom(p.caption, p.takenAt)}`);
+		for (const [label, list] of [["PHOTO", photos], ["VIDEO", videos]]) {
+			for (const m of list.slice(0, 10)) {
+				const when = m.takenAt ? m.takenAt.toISOString().slice(0, 10) : "(no date)";
+				console.log(`  ${label}  ${when}  ${titleFrom(m.caption, m.takenAt)}`);
+			}
+			if (list.length > 10) console.log(`  … and ${list.length - 10} more ${label.toLowerCase()}s`);
 		}
-		if (photos.length > 20) console.log(`  … and ${photos.length - 20} more`);
 		return;
 	}
 
 	await preflight();
-
-	const seen = await alreadyImported();
-	console.log(`${seen.size} already imported; skipping those.\n`);
-
-	let created = 0;
-	let skipped = 0;
-	let failed = 0;
-
-	for (const photo of photos) {
-		if (seen.has(photo.uri)) {
-			skipped++;
-			continue;
-		}
-		const abs = path.join(root, photo.uri);
-		if (!existsSync(abs)) {
-			console.warn(`  missing file, skipped: ${photo.uri}`);
-			failed++;
-			continue;
-		}
-
-		const title = titleFrom(photo.caption, photo.takenAt);
-		try {
-			// 1. upload the file into the media library (and R2)
-			const bytes = await readFile(abs);
-			const form = new FormData();
-			form.append(
-				"file",
-				new Blob([bytes], { type: mimeFor(abs) }),
-				path.basename(abs),
-			);
-			form.append("alt", title);
-			const up = await api("/_emdash/api/media", { method: "POST", body: form });
-			if (!up.ok) throw new Error(`media ${up.status}: ${JSON.stringify(up.body).slice(0, 200)}`);
-			const mediaId = up.body?.data?.item?.id ?? up.body?.item?.id;
-			if (!mediaId) throw new Error("no media id returned");
-
-			// The upload endpoint ignores an `alt` form field, so set it in a
-			// follow-up PUT (PATCH is not routed). Non-fatal: a photo without alt
-			// text is still worth importing.
-			await api(`/_emdash/api/media/${mediaId}`, {
-				method: "PUT",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ alt: title }),
-			}).catch(() => {});
-
-			// 2. create the photo entry
-			const create = await api("/_emdash/api/content/photos", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					data: {
-						title,
-						caption: photo.caption || undefined,
-						image: mediaId,
-						source_ref: photo.uri,
-						taken_at: photo.takenAt?.toISOString(),
-					},
-				}),
-			});
-			if (!create.ok) throw new Error(`create ${create.status}: ${JSON.stringify(create.body).slice(0, 200)}`);
-			const id = create.body?.data?.item?.id;
-
-			// 3. publish, backdated to when it was taken -- only if asked
-			if (PUBLISH) {
-				const pub = await api(`/_emdash/api/content/photos/${id}/publish`, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify(
-						photo.takenAt ? { publishedAt: photo.takenAt.toISOString() } : {},
-					),
-				});
-				if (!pub.ok) throw new Error(`publish ${pub.status}`);
-			}
-
-			created++;
-			process.stdout.write(`\r  imported ${created}…`);
-		} catch (error) {
-			if (error instanceof AuthLostError) throw error;
-			failed++;
-			console.warn(`\n  failed: ${photo.uri}\n    ${error.message}`);
-		}
-	}
-
-	console.log(
-		`\n\nDone. ${created} imported as ${PUBLISH ? "published" : "drafts"}, ` +
-			`${skipped} already present, ${failed} failed.`,
-	);
-	if (!PUBLISH && created > 0) {
-		console.log("Review them in the admin, then publish the ones you want public.");
-	}
+	if (wantPhotos) await importPhotos(root, photos);
+	if (wantVideos) await importVideos(root, videos);
 }
 
 main().catch((error) => {
