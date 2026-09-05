@@ -29,6 +29,9 @@ const EXPORT_DIR = opt("export");
 const SITE = (opt("site", "https://jedbarish.com") ?? "").replace(/\/$/, "");
 const LIMIT = Number(opt("limit", "0")) || 0;
 const DRY_RUN = flag("dry-run");
+// Photos land as drafts unless --publish is passed. An Instagram back
+// catalogue is personal by default; nothing goes public without asking for it.
+const PUBLISH = flag("publish");
 const TOKEN = process.env.EMDASH_TOKEN;
 
 if (!EXPORT_DIR) {
@@ -106,27 +109,58 @@ function mimeFor(file) {
 	);
 }
 
-/** Flatten the export's posts (each may be a carousel) into single photos. */
+/**
+ * Flatten the export's posts (each may be a carousel) into single photos.
+ *
+ * Exports ship two shapes side by side and neither is a superset of the other,
+ * so both are read and the results deduplicated on the media URI:
+ *
+ *   posts_1.json  media live on the post: { media: [...], title, creation_timestamp }
+ *   posts.json    media live under a label: { label_values: [{ label: "Media",
+ *                 media: [...] }, { label: "Caption", value }], timestamp }
+ */
 function collectPhotos(posts) {
 	const out = [];
+
+	const push = (item, fallbackCaption, fallbackTs, siblings) => {
+		const uri = item.uri;
+		if (!uri) return;
+		if (!IMAGE_EXT.has(path.extname(uri).toLowerCase())) return; // skip video
+		const caption = fixEncoding(item.title ?? "") || fallbackCaption;
+		const ts = item.creation_timestamp ?? fallbackTs ?? null;
+		out.push({
+			uri,
+			caption,
+			takenAt: ts ? new Date(ts * 1000) : null,
+			isCarousel: siblings > 1,
+		});
+	};
+
 	for (const post of Array.isArray(posts) ? posts : []) {
-		const postCaption = fixEncoding(post.title ?? "");
-		const media = Array.isArray(post.media) ? post.media : [];
-		for (const item of media) {
-			const uri = item.uri;
-			if (!uri) continue;
-			if (!IMAGE_EXT.has(path.extname(uri).toLowerCase())) continue; // skip video
-			const caption = fixEncoding(item.title ?? "") || postCaption;
-			const ts = item.creation_timestamp ?? post.creation_timestamp ?? null;
-			out.push({
-				uri,
-				caption,
-				takenAt: ts ? new Date(ts * 1000) : null,
-				isCarousel: media.length > 1,
-			});
+		const labels = Array.isArray(post.label_values) ? post.label_values : [];
+		const labelled = (name) => labels.find((l) => l.label === name);
+
+		const postCaption =
+			fixEncoding(post.title ?? "") ||
+			fixEncoding(labelled("Caption")?.value ?? "");
+		const postTs = post.creation_timestamp ?? post.timestamp ?? null;
+
+		const direct = Array.isArray(post.media) ? post.media : [];
+		for (const item of direct) push(item, postCaption, postTs, direct.length);
+
+		for (const label of labels) {
+			const nested = Array.isArray(label.media) ? label.media : [];
+			for (const item of nested) push(item, postCaption, postTs, nested.length);
 		}
 	}
-	return out;
+
+	// The two files overlap heavily; keep the first sighting of each URI.
+	const seen = new Set();
+	return out.filter((p) => {
+		if (seen.has(p.uri)) return false;
+		seen.add(p.uri);
+		return true;
+	});
 }
 
 /** First line of the caption, trimmed — Instagram has no separate title. */
@@ -196,11 +230,18 @@ async function main() {
 	console.log(`Found ${files.length} posts file(s):`);
 	for (const f of files) console.log(`  ${path.relative(root, f)}`);
 
-	let photos = [];
+	const byUri = new Map();
 	for (const file of files) {
 		const parsed = JSON.parse(await readFile(file, "utf8"));
-		photos.push(...collectPhotos(parsed));
+		for (const photo of collectPhotos(parsed)) {
+			// Files overlap; prefer whichever sighting actually has a caption.
+			const existing = byUri.get(photo.uri);
+			if (!existing || (!existing.caption && photo.caption)) {
+				byUri.set(photo.uri, photo);
+			}
+		}
 	}
+	let photos = [...byUri.values()];
 	photos.sort((a, b) => (a.takenAt?.getTime() ?? 0) - (b.takenAt?.getTime() ?? 0));
 
 	console.log(`\n${photos.length} image(s) in the export.`);
@@ -268,15 +309,17 @@ async function main() {
 			if (!create.ok) throw new Error(`create ${create.status}: ${JSON.stringify(create.body).slice(0, 200)}`);
 			const id = create.body?.data?.item?.id;
 
-			// 3. publish, backdated to when it was taken
-			const pub = await api(`/_emdash/api/content/photos/${id}/publish`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(
-					photo.takenAt ? { publishedAt: photo.takenAt.toISOString() } : {},
-				),
-			});
-			if (!pub.ok) throw new Error(`publish ${pub.status}`);
+			// 3. publish, backdated to when it was taken -- only if asked
+			if (PUBLISH) {
+				const pub = await api(`/_emdash/api/content/photos/${id}/publish`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(
+						photo.takenAt ? { publishedAt: photo.takenAt.toISOString() } : {},
+					),
+				});
+				if (!pub.ok) throw new Error(`publish ${pub.status}`);
+			}
 
 			created++;
 			process.stdout.write(`\r  imported ${created}…`);
@@ -287,8 +330,12 @@ async function main() {
 	}
 
 	console.log(
-		`\n\nDone. ${created} imported, ${skipped} already present, ${failed} failed.`,
+		`\n\nDone. ${created} imported as ${PUBLISH ? "published" : "drafts"}, ` +
+			`${skipped} already present, ${failed} failed.`,
 	);
+	if (!PUBLISH && created > 0) {
+		console.log("Review them in the admin, then publish the ones you want public.");
+	}
 }
 
 main().catch((error) => {
