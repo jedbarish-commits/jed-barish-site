@@ -37,7 +37,7 @@ const PUBLISH = flag("publish");
 // which makes an otherwise valid token fail with an opaque 401.
 const TOKEN = process.env.EMDASH_TOKEN?.trim();
 
-if (!EXPORT_DIR && !flag("fix-dates")) {
+if (!EXPORT_DIR && !flag("fix-dates") && !flag("publish-all")) {
 	console.error("Missing --export <path to unzipped Instagram export>");
 	process.exit(1);
 }
@@ -582,7 +582,83 @@ async function importVideos(root, items) {
 	console.log(`\nVideos: ${created} imported, ${skipped} already present, ${failed} failed.`);
 }
 
+/**
+ * Publish everything in both collections, dated to when it was taken.
+ *
+ * Publishing from the admin stamps published_at with "now", which for an
+ * imported back catalogue means several hundred items all landing on the same
+ * timestamp — and the site orders the feed by published_at. Publishing through
+ * here backdates in the same call, so the ordering is right immediately rather
+ * than needing a second pass.
+ */
+async function publishAll() {
+	await preflight();
+
+	for (const collection of ["photos", "posts"]) {
+		const items = [];
+		let cursor;
+		do {
+			const qs = new URLSearchParams({ limit: "100" });
+			if (cursor) qs.set("cursor", cursor);
+			const { ok, status, body } = await api(
+				`/_emdash/api/content/${collection}?${qs}`,
+			);
+			if (!ok) throw new Error(`Could not list ${collection} (HTTP ${status}).`);
+			items.push(...(body?.data?.items ?? []));
+			cursor = body?.data?.nextCursor;
+		} while (cursor);
+
+		let published = 0;
+		let redated = 0;
+		let skipped = 0;
+		let failed = 0;
+
+		for (const item of items) {
+			const taken = item?.data?.taken_at;
+			const want = taken ? new Date(taken).toISOString() : null;
+			const isDraft = item.status !== "published";
+			const dateWrong =
+				want && item.publishedAt
+					? new Date(item.publishedAt).toISOString() !== want
+					: false;
+
+			if (!isDraft && !dateWrong) {
+				skipped++;
+				continue;
+			}
+
+			const res = await api(
+				`/_emdash/api/content/${collection}/${item.id}/publish`,
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(want ? { publishedAt: want } : {}),
+				},
+			);
+			if (res.ok) {
+				if (isDraft) published++;
+				else redated++;
+				process.stdout.write(
+					`\r  ${collection}: ${published} published, ${redated} redated…`,
+				);
+			} else {
+				failed++;
+				console.warn(`\n  failed ${item.id}: HTTP ${res.status}`);
+			}
+		}
+
+		console.log(
+			`\n${collection}: ${published} published, ${redated} redated, ` +
+				`${skipped} already correct, ${failed} failed.`,
+		);
+	}
+}
+
 async function main() {
+	if (flag("publish-all")) {
+		await publishAll();
+		return;
+	}
 	if (flag("fix-dates")) {
 		await fixDates();
 		return;
