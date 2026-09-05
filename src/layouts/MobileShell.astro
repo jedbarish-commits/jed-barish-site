@@ -18,10 +18,15 @@ import "../styles/theme.css";
 
 interface Props {
 	title: string;
+	pageTitle?: string | null;
 	description?: string | null;
 	image?: string | null;
 	canonical?: string | null;
+	robots?: string | null;
 	type?: "website" | "article";
+	publishedTime?: string | null;
+	modifiedTime?: string | null;
+	author?: string | null;
 	/** Fills the viewport and manages its own scrolling (the feed). */
 	fullBleed?: boolean;
 	content?: { collection: string; id: string; slug?: string | null };
@@ -29,10 +34,15 @@ interface Props {
 
 const {
 	title,
+	pageTitle,
 	description,
 	image,
 	canonical,
+	robots,
 	type = "website",
+	publishedTime,
+	modifiedTime,
+	author,
 	fullBleed = false,
 	content,
 } = Astro.props;
@@ -46,12 +56,13 @@ const pageCtx = createPublicPageContext({
 	kind: content ? "content" : "custom",
 	pageType: type,
 	title: fullTitle,
-	pageTitle: title,
+	pageTitle: pageTitle ?? title,
 	description,
 	canonical,
 	image,
 	content,
-	seo: { ogImage: image },
+	seo: { ogImage: image, robots },
+	articleMeta: { publishedTime, modifiedTime, author },
 	siteName: siteTitle,
 });
 
