@@ -1,0 +1,16 @@
+{
+	"version": "0.0.1",
+	"configurations": [
+		{
+			"name": "jed-barish-site",
+			"runtimeExecutable": "/usr/local/bin/node",
+			"runtimeArgs": [
+				"/Users/jedbarish/Projects/jed-barish-site/node_modules/astro/bin/astro.mjs",
+				"dev",
+				"--root",
+				"/Users/jedbarish/Projects/jed-barish-site"
+			],
+			"port": 4321
+		}
+	]
+}

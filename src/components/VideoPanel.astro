@@ -1,0 +1,212 @@
+---
+import { Image } from "emdash/ui";
+
+/**
+ * One full-viewport panel in the swipe feed.
+ *
+ * The player is a facade: we render the R2-hosted thumbnail and only swap in
+ * the YouTube iframe once the visitor taps play. Eighteen live iframes on one
+ * page would cost several megabytes and stall scrolling on a phone.
+ */
+interface Props {
+	title: string;
+	youtubeId: string;
+	featuredImage?: unknown;
+	excerpt?: string | null;
+	href: string;
+	date?: string | null;
+	index: number;
+}
+
+const { title, youtubeId, featuredImage, excerpt, href, date, index } =
+	Astro.props;
+---
+
+<section class="panel" aria-label={title}>
+	<div class="panel-inner">
+		<div
+			class="player"
+			data-player
+			data-video-id={youtubeId}
+			data-title={title}
+		>
+			<button class="player-trigger" type="button" data-play>
+				<span class="visually-hidden">Play {title}</span>
+				{
+					featuredImage ? (
+						<Image
+							image={featuredImage}
+							class="player-thumb"
+							loading={index < 2 ? "eager" : "lazy"}
+						/>
+					) : (
+						<span class="player-thumb player-thumb-empty" />
+					)
+				}
+				<span class="player-scrim" aria-hidden="true"></span>
+				<span class="play-badge" aria-hidden="true">
+					<svg viewBox="0 0 24 24" fill="currentColor">
+						<path d="M8 5.5v13l11-6.5z"></path>
+					</svg>
+				</span>
+			</button>
+		</div>
+
+		<div class="meta">
+			<h2 class="title">
+				<a href={href}>{title}</a>
+			</h2>
+			{excerpt && <p class="excerpt">{excerpt}</p>}
+			{date && <p class="date">{date}</p>}
+		</div>
+	</div>
+</section>
+
+<style>
+	.panel {
+		height: 100%;
+		scroll-snap-align: start;
+		scroll-snap-stop: always;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: calc(env(safe-area-inset-top, 0px) + var(--spacing-6))
+			var(--spacing-5)
+			/* leave room for the floating nav */ 104px;
+		box-sizing: border-box;
+	}
+
+	.panel-inner {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-5);
+	}
+
+	.player {
+		position: relative;
+		width: 100%;
+		aspect-ratio: 16 / 9;
+		border-radius: 14px;
+		overflow: hidden;
+		background: #000;
+		box-shadow: 0 8px 28px -10px rgb(0 0 0 / 0.7);
+	}
+
+	.player-trigger {
+		display: block;
+		width: 100%;
+		height: 100%;
+		padding: 0;
+		border: 0;
+		background: none;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.player :global(.player-thumb) {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	.player-thumb-empty {
+		display: block;
+		background: #1a1a1c;
+	}
+
+	.player-scrim {
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(
+			to bottom,
+			rgb(0 0 0 / 0.05),
+			rgb(0 0 0 / 0.35)
+		);
+	}
+
+	.play-badge {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		width: 60px;
+		height: 60px;
+		display: grid;
+		place-items: center;
+		border-radius: 50%;
+		color: #111;
+		background: rgb(255 255 255 / 0.94);
+		box-shadow: 0 4px 16px rgb(0 0 0 / 0.4);
+		transition: transform var(--transition-fast);
+	}
+
+	.play-badge svg {
+		width: 30px;
+		height: 30px;
+		margin-left: 3px;
+	}
+
+	@media (hover: hover) {
+		.player-trigger:hover .play-badge {
+			transform: translate(-50%, -50%) scale(1.06);
+		}
+	}
+
+	.player :global(iframe) {
+		width: 100%;
+		height: 100%;
+		border: 0;
+		display: block;
+	}
+
+	.meta {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-2);
+	}
+
+	.title {
+		font-size: 1.25rem;
+		line-height: 1.25;
+		font-weight: 600;
+		letter-spacing: var(--tracking-tight);
+		margin: 0;
+	}
+
+	.title a {
+		color: #fff;
+		text-decoration: none;
+	}
+
+	.excerpt {
+		margin: 0;
+		font-size: 0.9375rem;
+		line-height: 1.5;
+		color: rgb(255 255 255 / 0.66);
+	}
+
+	.date {
+		margin: 0;
+		font-size: 0.75rem;
+		letter-spacing: var(--tracking-wide);
+		text-transform: uppercase;
+		color: rgb(255 255 255 / 0.4);
+	}
+
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.play-badge {
+			transition: none;
+		}
+	}
+</style>

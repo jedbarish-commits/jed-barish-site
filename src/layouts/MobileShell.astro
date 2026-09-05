@@ -1,0 +1,207 @@
+---
+/**
+ * MobileShell — an app-shell layout that renders phone-shaped at every
+ * viewport width. Used by the swipe feed; Base.astro still handles the
+ * article/reading pages.
+ *
+ * Keeps the same EmDash wiring as Base.astro (head, body slots, page
+ * context) so plugins, SEO and the admin bar keep working.
+ */
+import { getMenu, getSiteSettings } from "emdash";
+import { EmDashHead, EmDashBodyStart, EmDashBodyEnd } from "emdash/ui";
+import { createPublicPageContext } from "emdash/page";
+import { Font } from "astro:assets";
+import { resolveBlogSiteIdentity } from "../utils/site-identity";
+import BottomNav from "../components/BottomNav.astro";
+import "../styles/tokens.css";
+import "../styles/theme.css";
+
+interface Props {
+	title: string;
+	description?: string | null;
+	image?: string | null;
+	canonical?: string | null;
+	type?: "website" | "article";
+	/** Fills the viewport and manages its own scrolling (the feed). */
+	fullBleed?: boolean;
+	content?: { collection: string; id: string; slug?: string | null };
+}
+
+const {
+	title,
+	description,
+	image,
+	canonical,
+	type = "website",
+	fullBleed = false,
+	content,
+} = Astro.props;
+
+const [settings, menu] = await Promise.all([getSiteSettings(), getMenu("primary")]);
+const { siteTitle } = resolveBlogSiteIdentity(settings);
+const fullTitle = title.includes(siteTitle) ? title : `${title} — ${siteTitle}`;
+
+const pageCtx = createPublicPageContext({
+	Astro,
+	kind: content ? "content" : "custom",
+	pageType: type,
+	title: fullTitle,
+	pageTitle: title,
+	description,
+	canonical,
+	image,
+	content,
+	seo: { ogImage: image },
+	siteName: siteTitle,
+});
+
+// Nav is CMS-driven off the primary menu, with an icon chosen per URL.
+// Search is always appended — it has no menu entry but the shell needs it.
+type IconName = "feed" | "grid" | "search" | "link";
+function iconFor(url: string): IconName {
+	if (url === "/") return "feed";
+	if (url.startsWith("/posts")) return "grid";
+	if (url.startsWith("/search")) return "search";
+	return "link";
+}
+
+const navItems = [
+	...(menu?.items ?? []).map((item) => ({
+		label: item.label,
+		href: item.url,
+		icon: iconFor(item.url),
+	})),
+	{ label: "Search", href: "/search", icon: "search" as IconName },
+];
+
+const currentPath = Astro.url.pathname;
+const isLoggedIn = !!Astro.locals.user;
+---
+
+<!doctype html>
+<html lang="en" class:list={{ "is-full-bleed": fullBleed }}>
+	<head>
+		<meta charset="UTF-8" />
+		<!-- viewport-fit=cover is what makes env(safe-area-inset-*) resolve to
+		     real values on notched iPhones, so the nav clears the home indicator. -->
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+		/>
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+		<meta name="theme-color" content="#0b0b0c" />
+		<Font cssVariable="--font-body" preload />
+		<title>{fullTitle}</title>
+		<EmDashHead page={pageCtx} />
+		<script is:inline>
+			(function () {
+				var c = document.cookie;
+				var i = c.indexOf("theme=");
+				var theme = i >= 0 ? c.slice(i + 6).split(";")[0] : null;
+				if (theme === "dark" || theme === "light") {
+					document.documentElement.classList.add(theme);
+				}
+			})();
+		</script>
+	</head>
+	<body>
+		<EmDashBodyStart page={pageCtx} />
+
+		<div class="app-frame">
+			<main class="app-viewport">
+				<slot />
+			</main>
+			<BottomNav items={navItems} current={currentPath} />
+		</div>
+
+		{
+			isLoggedIn && (
+				<a href="/_emdash/admin" class="admin-escape">
+					Admin
+				</a>
+			)
+		}
+
+		<EmDashBodyEnd page={pageCtx} />
+	</body>
+</html>
+
+<style is:global>
+	:root {
+		/* Phone-frame width — the shell never grows past this, at any viewport. */
+		--app-width: 430px;
+		--nav-gap: 14px;
+		--nav-bg: rgb(22 22 24 / 0.72);
+		--nav-border: rgb(255 255 255 / 0.1);
+		--nav-fg-muted: rgb(255 255 255 / 0.55);
+		--nav-fg-active: #fff;
+		--nav-active-bg: rgb(255 255 255 / 0.12);
+		--app-bg: #0b0b0c;
+		--app-backdrop: #050506;
+	}
+
+	html.is-full-bleed,
+	html.is-full-bleed body {
+		height: 100%;
+		/* The feed owns scrolling; the document itself must not scroll or iOS
+		   gives you two nested scrollers fighting each other. */
+		overflow: hidden;
+		overscroll-behavior: none;
+	}
+
+	body {
+		background: var(--app-backdrop);
+		color: #fff;
+		margin: 0;
+	}
+
+	.app-frame {
+		position: relative;
+		width: 100%;
+		max-width: var(--app-width);
+		margin-inline: auto;
+		background: var(--app-bg);
+		min-height: 100dvh;
+	}
+
+	html.is-full-bleed .app-frame {
+		height: 100dvh;
+		overflow: hidden;
+	}
+
+	.app-viewport {
+		height: 100%;
+	}
+
+	/* Above the phone width the frame becomes a device-like column against a
+	   darker backdrop, so the site reads as an app on desktop too. */
+	@media (min-width: 640px) {
+		.app-frame {
+			box-shadow: 0 0 0 1px rgb(255 255 255 / 0.06);
+		}
+
+		html.is-full-bleed .app-frame {
+			height: min(100dvh - 48px, 932px);
+			margin-block: 24px;
+			border-radius: 28px;
+			overflow: hidden;
+		}
+	}
+
+	.admin-escape {
+		position: fixed;
+		top: calc(env(safe-area-inset-top, 0px) + 10px);
+		right: 12px;
+		z-index: 60;
+		padding: 6px 12px;
+		font-size: 12px;
+		border-radius: 999px;
+		text-decoration: none;
+		color: #fff;
+		background: rgb(0 0 0 / 0.5);
+		border: 1px solid rgb(255 255 255 / 0.14);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+	}
+</style>
