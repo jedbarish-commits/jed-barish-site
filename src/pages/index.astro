@@ -39,6 +39,18 @@ const feed: FeedItem[] = [
 	...photos.entries.map((entry) => ({ kind: "photo" as const, at: when(entry), entry })),
 ].sort((a, b) => b.at - a.at);
 
+// A file field stores either a direct src or an R2 storage key.
+const fileSrc = (value: unknown): string | null => {
+	if (!value || typeof value !== "object") return null;
+	const f = value as Record<string, unknown>;
+	if (typeof f.src === "string" && f.src) return f.src;
+	const meta = f.meta as Record<string, unknown> | undefined;
+	const key =
+		(typeof meta?.storageKey === "string" ? meta.storageKey : undefined) ||
+		(typeof f.id === "string" ? f.id : undefined);
+	return key ? `/_emdash/api/media/file/${key}` : null;
+};
+
 const formatDate = (value: Date | string | null | undefined) =>
 	value
 		? new Date(value).toLocaleDateString("en-US", {
@@ -66,10 +78,12 @@ const formatDate = (value: Date | string | null | undefined) =>
 						<VideoPanel
 							title={item.entry.data.title ?? "Untitled"}
 							youtubeId={item.entry.data.youtube_id ?? ""}
+							videoSrc={fileSrc(item.entry.data.video_file)}
 							featuredImage={item.entry.data.featured_image}
 							excerpt={item.entry.data.excerpt}
 							href={`/videos/${item.entry.id}`}
 							date={formatDate(item.entry.data.publishedAt)}
+							contentId={item.entry.data.id}
 							index={i}
 						/>
 					) : (
@@ -81,6 +95,7 @@ const formatDate = (value: Date | string | null | undefined) =>
 							date={formatDate(
 								item.entry.data.taken_at ?? item.entry.data.publishedAt,
 							)}
+							contentId={item.entry.data.id}
 							index={i}
 						/>
 					),
@@ -150,31 +165,49 @@ const formatDate = (value: Date | string | null | undefined) =>
 		const teardown = new Map<Element, () => void>();
 
 		function activate(player: HTMLElement) {
+			if (player.querySelector("iframe, video")) return;
 			const videoId = player.dataset.videoId;
-			if (!videoId || player.querySelector("iframe")) return;
+			const videoSrc = player.dataset.videoSrc;
+			if (!videoId && !videoSrc) return;
 
 			const trigger = player.querySelector<HTMLElement>("[data-play]");
-			const params = new URLSearchParams({
-				autoplay: "1",
-				playsinline: "1",
-				rel: "0",
-				modestbranding: "1",
-				// Captions on by default.
-				cc_load_policy: "1",
-			});
+			let element: HTMLElement;
 
-			const iframe = document.createElement("iframe");
-			iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?${params}`;
-			iframe.title = player.dataset.title ?? "Video";
-			iframe.allow =
-				"accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share";
-			iframe.allowFullscreen = true;
+			if (videoSrc) {
+				// Self-hosted (an Instagram import): a plain video element, muted so
+				// autoplay is allowed, with controls so sound can be turned on.
+				const video = document.createElement("video");
+				video.src = videoSrc;
+				video.controls = true;
+				video.autoplay = true;
+				video.muted = true;
+				video.playsInline = true;
+				video.preload = "auto";
+				element = video;
+			} else {
+				const params = new URLSearchParams({
+					autoplay: "1",
+					playsinline: "1",
+					rel: "0",
+					modestbranding: "1",
+					// Captions on by default.
+					cc_load_policy: "1",
+				});
+				const iframe = document.createElement("iframe");
+				iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?${params}`;
+				iframe.title = player.dataset.title ?? "Video";
+				iframe.allow =
+					"accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share";
+				iframe.allowFullscreen = true;
+				element = iframe;
+			}
 
 			trigger?.remove();
-			player.appendChild(iframe);
+			player.appendChild(element);
 
 			teardown.set(player, () => {
-				iframe.remove();
+				if (element instanceof HTMLVideoElement) element.pause();
+				element.remove();
 				if (trigger) player.appendChild(trigger);
 				teardown.delete(player);
 			});

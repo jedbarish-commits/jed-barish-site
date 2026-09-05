@@ -4,9 +4,17 @@ import MobileShell from "../../layouts/MobileShell.astro";
 import VideoGrid from "../../components/VideoGrid.astro";
 import ViewToggle from "../../components/ViewToggle.astro";
 
-const { entries: posts, cacheHint } = await getEmDashCollection("posts", {
+const PER_PAGE = 48;
+const page = Math.max(1, Number(Astro.url.searchParams.get("page") ?? "1") || 1);
+
+const { entries: all, cacheHint } = await getEmDashCollection("posts", {
 	orderBy: { published_at: "desc" },
+	limit: 1000,
 });
+
+const totalPages = Math.max(1, Math.ceil(all.length / PER_PAGE));
+const current = Math.min(page, totalPages);
+const posts = all.slice((current - 1) * PER_PAGE, current * PER_PAGE);
 
 if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
 ---
@@ -16,9 +24,12 @@ if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
 		<header class="page-head">
 			<div>
 				<h1>Posts</h1>
-				<p>{posts.length} {posts.length === 1 ? "video" : "videos"}</p>
+				<p>
+					{all.length} {all.length === 1 ? "video" : "videos"}
+					{totalPages > 1 && ` · page ${current} of ${totalPages}`}
+				</p>
 			</div>
-			{posts.length > 0 && <ViewToggle />}
+			{all.length > 0 && <ViewToggle />}
 		</header>
 
 		{
@@ -26,6 +37,24 @@ if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
 				<p class="empty">Nothing published yet.</p>
 			) : (
 				<VideoGrid posts={posts} />
+			)
+		}
+
+		{
+			totalPages > 1 && (
+				<nav class="pager" aria-label="Pagination">
+					{current > 1 ? (
+						<a href={`/videos?page=${current - 1}`} rel="prev">← Newer</a>
+					) : (
+						<span class="disabled">← Newer</span>
+					)}
+					<span class="pager-pos">{current} / {totalPages}</span>
+					{current < totalPages ? (
+						<a href={`/videos?page=${current + 1}`} rel="next">Older →</a>
+					) : (
+						<span class="disabled">Older →</span>
+					)}
+				</nav>
 			)
 		}
 	</div>
@@ -56,6 +85,34 @@ if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
 		margin: 4px 0 0;
 		font-size: 0.8125rem;
 		color: rgb(255 255 255 / 0.45);
+	}
+
+	.pager {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--spacing-3);
+		margin-top: var(--spacing-6);
+		font-size: 0.8125rem;
+	}
+
+	.pager a {
+		padding: 8px 14px;
+		border-radius: 999px;
+		background: rgb(255 255 255 / 0.1);
+		border: 1px solid rgb(255 255 255 / 0.14);
+		color: #fff;
+		text-decoration: none;
+	}
+
+	.pager .disabled {
+		padding: 8px 14px;
+		color: rgb(255 255 255 / 0.25);
+	}
+
+	.pager-pos {
+		color: rgb(255 255 255 / 0.45);
+		font-variant-numeric: tabular-nums;
 	}
 
 	.empty {

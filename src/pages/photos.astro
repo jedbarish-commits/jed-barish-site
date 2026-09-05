@@ -3,20 +3,29 @@ import { getEmDashCollection } from "emdash";
 import { Image } from "emdash/ui";
 import MobileShell from "../layouts/MobileShell.astro";
 
-const { entries: photos, cacheHint } = await getEmDashCollection("photos", {
+const PER_PAGE = 48;
+const page = Math.max(1, Number(Astro.url.searchParams.get("page") ?? "1") || 1);
+
+const { entries: all, cacheHint } = await getEmDashCollection("photos", {
 	orderBy: { published_at: "desc" },
-	limit: 200,
+	limit: 1000,
 });
 
 // Imported photos were all published today but taken over many years, so
 // published_at says nothing useful about ordering. Sort on taken_at.
-photos.sort((a, b) => {
+all.sort((a, b) => {
 	const at = (e: { data: Record<string, unknown> }) => {
 		const v = (e.data.taken_at ?? e.data.publishedAt) as Date | string | null;
 		return v ? new Date(v).getTime() : 0;
 	};
 	return at(b) - at(a);
 });
+
+// Paginate after sorting: published_at ordering from the DB says nothing
+// useful here, so the real order is only known once taken_at is applied.
+const totalPages = Math.max(1, Math.ceil(all.length / PER_PAGE));
+const current = Math.min(page, totalPages);
+const photos = all.slice((current - 1) * PER_PAGE, current * PER_PAGE);
 
 if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
 
@@ -38,7 +47,10 @@ function fullSrc(img: unknown): string | undefined {
 	<div class="photos-page">
 		<header class="page-head">
 			<h1>Photos</h1>
-			<p>{photos.length} {photos.length === 1 ? "photo" : "photos"}</p>
+			<p>
+				{all.length} {all.length === 1 ? "photo" : "photos"}
+				{totalPages > 1 && ` · page ${current} of ${totalPages}`}
+			</p>
 		</header>
 
 		{
@@ -68,22 +80,52 @@ function fullSrc(img: unknown): string | undefined {
 				</ul>
 			)
 		}
+		{
+			totalPages > 1 && (
+				<nav class="pager" aria-label="Pagination">
+					{current > 1 ? (
+						<a href={`/photos?page=${current - 1}`} rel="prev">
+							← Newer
+						</a>
+					) : (
+						<span class="disabled">← Newer</span>
+					)}
+					<span class="pager-pos">
+						{current} / {totalPages}
+					</span>
+					{current < totalPages ? (
+						<a href={`/photos?page=${current + 1}`} rel="next">
+							Older →
+						</a>
+					) : (
+						<span class="disabled">Older →</span>
+					)}
+				</nav>
+			)
+		}
 	</div>
 
-	<div class="lightbox" data-lightbox hidden>
-		<button type="button" class="lb-close" data-close aria-label="Close">
+	<div class="viewer" data-viewer hidden>
+		<button type="button" class="v-close" data-close aria-label="Close viewer">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
 				<path d="M6 6l12 12M18 6L6 18"></path>
 			</svg>
 		</button>
-		<figure>
-			<img data-lb-img alt="" />
-			<figcaption>
-				<span class="lb-title" data-lb-title></span>
-				<span class="lb-caption" data-lb-caption></span>
-				<span class="lb-location" data-lb-location></span>
-			</figcaption>
-		</figure>
+
+		<div class="v-track" data-track>
+			{
+				photos.map((photo) => (
+					<figure class="v-slide">
+						<img src={fullSrc(photo.data.image)} alt={photo.data.title} loading="lazy" />
+						<figcaption>
+							<span class="v-title">{photo.data.title}</span>
+							{photo.data.caption && <span class="v-caption">{photo.data.caption}</span>}
+							{photo.data.location && <span class="v-location">{photo.data.location}</span>}
+						</figcaption>
+					</figure>
+				))
+			}
+		</div>
 	</div>
 </MobileShell>
 
@@ -158,129 +200,164 @@ function fullSrc(img: unknown): string | undefined {
 		font-size: 0.875rem;
 	}
 
-	/* Lightbox */
-	.lightbox {
+	.pager {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--spacing-3);
+		margin-top: var(--spacing-6);
+		font-size: 0.8125rem;
+	}
+
+	.pager a {
+		padding: 8px 14px;
+		border-radius: 999px;
+		background: rgb(255 255 255 / 0.1);
+		border: 1px solid rgb(255 255 255 / 0.14);
+		color: #fff;
+		text-decoration: none;
+	}
+
+	.pager .disabled {
+		padding: 8px 14px;
+		color: rgb(255 255 255 / 0.25);
+	}
+
+	.pager-pos {
+		color: rgb(255 255 255 / 0.45);
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* Full-screen viewer — same swipe model as the home feed. */
+	.viewer {
 		position: fixed;
 		inset: 0;
 		z-index: 80;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: var(--spacing-5);
-		background: rgb(0 0 0 / 0.94);
-		backdrop-filter: blur(8px);
-		-webkit-backdrop-filter: blur(8px);
+		background: #000;
 	}
 
-	.lightbox[hidden] {
+	.viewer[hidden] {
 		display: none;
 	}
 
-	.lightbox figure {
-		margin: 0;
-		max-width: 100%;
-		max-height: 100%;
-		display: flex;
-		flex-direction: column;
-		gap: var(--spacing-3);
+	.v-track {
+		height: 100dvh;
+		overflow-y: auto;
+		scroll-snap-type: y mandatory;
+		overscroll-behavior-y: contain;
+		-webkit-overflow-scrolling: touch;
+		scrollbar-width: none;
 	}
 
-	.lightbox img {
+	.v-track::-webkit-scrollbar {
+		display: none;
+	}
+
+	.v-slide {
+		height: 100dvh;
+		margin: 0;
+		scroll-snap-align: start;
+		scroll-snap-stop: always;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--spacing-4);
+		padding: calc(env(safe-area-inset-top, 0px) + 56px) var(--spacing-5)
+			calc(env(safe-area-inset-bottom, 0px) + var(--spacing-6));
+		box-sizing: border-box;
+	}
+
+	.v-slide img {
 		max-width: 100%;
-		max-height: 70vh;
+		max-height: 70dvh;
 		object-fit: contain;
 		border-radius: 10px;
 		display: block;
-		margin: 0 auto;
 	}
 
-	.lightbox figcaption {
+	.v-slide figcaption {
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
 		text-align: center;
+		max-width: 100%;
 	}
 
-	.lb-title {
+	.v-title {
 		font-size: 0.9375rem;
 		font-weight: 600;
 	}
 
-	.lb-caption {
+	.v-caption {
 		font-size: 0.875rem;
 		line-height: 1.5;
 		color: rgb(255 255 255 / 0.66);
+		max-height: 6.5em;
+		overflow-y: auto;
 	}
 
-	.lb-caption:empty,
-	.lb-location:empty {
-		display: none;
-	}
-
-	.lb-location {
+	.v-location {
 		font-size: 0.6875rem;
 		text-transform: uppercase;
 		letter-spacing: var(--tracking-wide);
 		color: rgb(255 255 255 / 0.4);
 	}
 
-	.lb-close {
+	.v-close {
 		position: absolute;
 		top: calc(env(safe-area-inset-top, 0px) + 12px);
 		right: 12px;
+		z-index: 1;
 		width: 38px;
 		height: 38px;
 		display: grid;
 		place-items: center;
 		border: 0;
 		border-radius: 50%;
-		background: rgb(255 255 255 / 0.12);
+		background: rgb(255 255 255 / 0.14);
 		color: #fff;
 		cursor: pointer;
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
 	}
 
-	.lb-close svg {
+	.v-close svg {
 		width: 19px;
 		height: 19px;
 	}
+
 </style>
 
 <script>
-	const lightbox = document.querySelector<HTMLElement>("[data-lightbox]");
-	const img = document.querySelector<HTMLImageElement>("[data-lb-img]");
-	const titleEl = document.querySelector<HTMLElement>("[data-lb-title]");
-	const captionEl = document.querySelector<HTMLElement>("[data-lb-caption]");
-	const locationEl = document.querySelector<HTMLElement>("[data-lb-location]");
+	// The viewer is a vertical snap feed of every photo, matching the home feed's
+	// interaction. Opening scrolls straight to the tapped one.
+	const viewer = document.querySelector<HTMLElement>("[data-viewer]");
+	const track = document.querySelector<HTMLElement>("[data-track]");
+	const tiles = [...document.querySelectorAll<HTMLElement>(".tile")];
+
+	function open(index: number) {
+		if (!viewer || !track) return;
+		viewer.hidden = false;
+		// Height is only measurable once it is displayed.
+		const slide = track.children[index] as HTMLElement | undefined;
+		track.scrollTop = slide ? slide.offsetTop : index * track.clientHeight;
+		document.documentElement.style.overflow = "hidden";
+	}
 
 	function close() {
-		if (!lightbox) return;
-		lightbox.hidden = true;
+		if (!viewer) return;
+		viewer.hidden = true;
 		document.documentElement.style.overflow = "";
-		if (img) img.src = "";
 	}
 
-	for (const tile of document.querySelectorAll<HTMLElement>(".tile")) {
-		tile.addEventListener("click", () => {
-			if (!lightbox || !img) return;
-			const full = tile.dataset.full;
-			if (!full) return;
-			img.src = full;
-			img.alt = tile.dataset.title ?? "";
-			if (titleEl) titleEl.textContent = tile.dataset.title ?? "";
-			if (captionEl) captionEl.textContent = tile.dataset.caption ?? "";
-			if (locationEl) locationEl.textContent = tile.dataset.location ?? "";
-			lightbox.hidden = false;
-			// Stop the page behind the overlay from scrolling under it.
-			document.documentElement.style.overflow = "hidden";
-		});
-	}
+	tiles.forEach((tile, i) => tile.addEventListener("click", () => open(i)));
 
-	lightbox?.addEventListener("click", (event) => {
-		const target = event.target as HTMLElement;
-		if (target.closest("[data-close]") || target === lightbox) close();
+	viewer?.addEventListener("click", (event) => {
+		if ((event.target as HTMLElement).closest("[data-close]")) close();
 	});
 
 	document.addEventListener("keydown", (event) => {
-		if (event.key === "Escape" && lightbox && !lightbox.hidden) close();
+		if (event.key === "Escape" && viewer && !viewer.hidden) close();
 	});
 </script>

@@ -1,5 +1,6 @@
 ---
 import { Image } from "emdash/ui";
+import Reactions from "./Reactions.astro";
 
 /**
  * One full-viewport photo panel in the swipe feed, sized to sit alongside
@@ -14,9 +15,11 @@ interface Props {
 	location?: string | null;
 	date?: string | null;
 	index: number;
+	/** Omit to hide the reaction bar. */
+	contentId?: string;
 }
 
-const { title, image, caption, location, date, index } = Astro.props;
+const { title, image, caption, location, date, index, contentId } = Astro.props;
 ---
 
 <section class="panel" aria-label={title}>
@@ -28,6 +31,7 @@ const { title, image, caption, location, date, index } = Astro.props;
 		<div class="meta">
 			<h2 class="title">{title}</h2>
 			{caption && <p class="caption">{caption}</p>}
+			{contentId && <Reactions collection="photos" contentId={contentId} compact />}
 			<p class="sub">
 				{location && <span class="location">{location}</span>}
 				{location && date && <span class="dot" aria-hidden="true"></span>}

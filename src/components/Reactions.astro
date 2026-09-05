@@ -1,0 +1,201 @@
+---
+/**
+ * Reaction bar. Counts load client-side so the page itself stays cacheable.
+ *
+ * 🤟 is the ASL "I love you" handshape — worth having as a first-class
+ * reaction on this site rather than only the generic set.
+ */
+interface Props {
+	collection: "posts" | "photos";
+	contentId: string;
+	compact?: boolean;
+}
+
+const { collection, contentId, compact = false } = Astro.props;
+
+const KINDS = [
+	{ kind: "like", glyph: "👍", label: "Like" },
+	{ kind: "love", glyph: "❤️", label: "Love" },
+	{ kind: "ily", glyph: "🤟", label: "I love you" },
+	{ kind: "wow", glyph: "😮", label: "Wow" },
+];
+---
+
+<div
+	class:list={["reactions", { compact }]}
+	data-reactions
+	data-collection={collection}
+	data-id={contentId}
+>
+	{
+		KINDS.map(({ kind, glyph, label }) => (
+			<button type="button" data-kind={kind} aria-pressed="false" title={label}>
+				<span class="glyph" aria-hidden="true">
+					{glyph}
+				</span>
+				<span class="count" data-count>
+					0
+				</span>
+				<span class="visually-hidden">{label}</span>
+			</button>
+		))
+	}
+</div>
+
+<style>
+	.reactions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--spacing-2);
+	}
+
+	button {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 7px 13px;
+		border-radius: 999px;
+		border: 1px solid rgb(255 255 255 / 0.12);
+		background: rgb(255 255 255 / 0.06);
+		color: rgb(255 255 255 / 0.75);
+		font: inherit;
+		font-size: 0.8125rem;
+		line-height: 1;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+		transition:
+			background var(--transition-fast),
+			border-color var(--transition-fast),
+			transform var(--transition-fast);
+	}
+
+	button[aria-pressed="true"] {
+		background: rgb(255 255 255 / 0.16);
+		border-color: rgb(255 255 255 / 0.32);
+		color: #fff;
+	}
+
+	button:active {
+		transform: scale(0.94);
+	}
+
+	.glyph {
+		font-size: 1rem;
+	}
+
+	.count {
+		font-variant-numeric: tabular-nums;
+		min-width: 1ch;
+	}
+
+	.compact button {
+		padding: 5px 10px;
+		font-size: 0.75rem;
+	}
+
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		button {
+			transition: none;
+		}
+	}
+</style>
+
+<script>
+	// One id per browser, so a toggle is idempotent for that person. Purely to
+	// stop double-counting — it identifies nobody.
+	function visitorId(): string {
+		const KEY = "visitor-id";
+		try {
+			let id = localStorage.getItem(KEY);
+			if (!id) {
+				id = crypto.randomUUID();
+				localStorage.setItem(KEY, id);
+			}
+			return id;
+		} catch {
+			// Private window: reactions still register, they just aren't
+			// remembered as "yours" across reloads.
+			return crypto.randomUUID();
+		}
+	}
+
+	const visitor = visitorId();
+
+	for (const bar of document.querySelectorAll<HTMLElement>("[data-reactions]")) {
+		const collection = bar.dataset.collection!;
+		const id = bar.dataset.id!;
+		const buttons = [...bar.querySelectorAll<HTMLButtonElement>("[data-kind]")];
+
+		const paint = (counts: Record<string, number>, mine: string[]) => {
+			for (const button of buttons) {
+				const kind = button.dataset.kind!;
+				const countEl = button.querySelector<HTMLElement>("[data-count]");
+				if (countEl) countEl.textContent = String(counts[kind] ?? 0);
+				button.setAttribute("aria-pressed", String(mine.includes(kind)));
+			}
+		};
+
+		// Counts load when the bar first scrolls into view. The feed can hold
+		// sixty panels, and fetching every one on load would be sixty requests
+		// before the visitor has seen anything.
+		let loaded = false;
+		const load = () => {
+			if (loaded) return;
+			loaded = true;
+			const params = new URLSearchParams({ collection, id, visitor });
+			fetch(`/api/reactions?${params}`)
+				.then((r) => (r.ok ? r.json() : null))
+				.then((data) => data && paint(data.counts ?? {}, data.mine ?? []))
+				.catch(() => {});
+		};
+
+		const io = new IntersectionObserver(
+			(entries) => {
+				if (entries.some((e) => e.isIntersecting)) {
+					load();
+					io.disconnect();
+				}
+			},
+			{ rootMargin: "200px" },
+		);
+		io.observe(bar);
+
+		for (const button of buttons) {
+			button.addEventListener("click", async () => {
+				const kind = button.dataset.kind!;
+				// Optimistic: flip immediately, reconcile with the server's counts.
+				const wasOn = button.getAttribute("aria-pressed") === "true";
+				button.setAttribute("aria-pressed", String(!wasOn));
+
+				try {
+					const res = await fetch("/api/reactions", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ collection, id, kind, visitor }),
+					});
+					if (!res.ok) throw new Error(String(res.status));
+					const data = await res.json();
+					const mine = buttons
+						.filter((b) =>
+							b === button
+								? data.active
+								: b.getAttribute("aria-pressed") === "true",
+						)
+						.map((b) => b.dataset.kind!);
+					paint(data.counts ?? {}, mine);
+				} catch {
+					button.setAttribute("aria-pressed", String(wasOn));
+				}
+			});
+		}
+	}
+</script>

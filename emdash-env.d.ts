@@ -18,14 +18,32 @@ export interface Page {
   terms?: Record<string, TaxonomyTerm[]>;
 }
 
+export interface Photo {
+  id: string;
+  slug: string | null;
+  status: string;
+  title: string;
+  image: { id: string; src?: string; alt?: string; width?: number; height?: number; filename?: string; mimeType?: string; blurhash?: string; dominantColor?: string; provider?: string; previewUrl?: string; meta?: Record<string, unknown>; darkVariant?: { id: string; src?: string; alt?: string; width?: number; height?: number; filename?: string; mimeType?: string; blurhash?: string; dominantColor?: string; provider?: string; previewUrl?: string; meta?: Record<string, unknown> } };
+  caption?: string;
+  location?: string;
+  source_ref?: string;
+  taken_at?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  publishedAt: Date | null;
+  bylines?: ContentBylineCredit[];
+  terms?: Record<string, TaxonomyTerm[]>;
+}
+
 export interface Post {
   id: string;
   slug: string | null;
   status: string;
   title: string;
-  featured_image?: { id: string; src?: string; alt?: string; width?: number; height?: number };
+  featured_image?: { id: string; src?: string; alt?: string; width?: number; height?: number; filename?: string; mimeType?: string; blurhash?: string; dominantColor?: string; provider?: string; previewUrl?: string; meta?: Record<string, unknown>; darkVariant?: { id: string; src?: string; alt?: string; width?: number; height?: number; filename?: string; mimeType?: string; blurhash?: string; dominantColor?: string; provider?: string; previewUrl?: string; meta?: Record<string, unknown> } };
   content?: PortableTextBlock[];
   excerpt?: string;
+  youtube_id?: string;
   createdAt: Date;
   updatedAt: Date;
   publishedAt: Date | null;
@@ -36,6 +54,7 @@ export interface Post {
 declare module "emdash" {
   interface EmDashCollections {
     pages: Page;
+    photos: Photo;
     posts: Post;
   }
 }
