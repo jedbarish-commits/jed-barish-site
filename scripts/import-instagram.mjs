@@ -292,6 +292,15 @@ async function main() {
 			const mediaId = up.body?.data?.item?.id ?? up.body?.item?.id;
 			if (!mediaId) throw new Error("no media id returned");
 
+			// The upload endpoint ignores an `alt` form field, so set it in a
+			// follow-up PUT (PATCH is not routed). Non-fatal: a photo without alt
+			// text is still worth importing.
+			await api(`/_emdash/api/media/${mediaId}`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ alt: title }),
+			}).catch(() => {});
+
 			// 2. create the photo entry
 			const create = await api("/_emdash/api/content/photos", {
 				method: "POST",
