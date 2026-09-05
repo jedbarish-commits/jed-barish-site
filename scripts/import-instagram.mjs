@@ -178,15 +178,52 @@ function titleFrom(caption, takenAt) {
 		: "Untitled";
 }
 
-const api = async (pathname, init = {}) => {
-	const res = await fetch(`${SITE}${pathname}`, {
-		...init,
-		headers: {
-			Authorization: `Bearer ${TOKEN}`,
-			"X-EmDash-Request": "1",
-			...(init.headers ?? {}),
-		},
-	});
+/** Thrown when the token stops working part-way through a run. */
+class AuthLostError extends Error {}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * A few hundred uploads over several minutes will hit the occasional dropped
+ * connection or 5xx. Those are retried with backoff. A 401 mid-run means the
+ * token died, which retrying cannot fix — that aborts the run so the rest of
+ * the export isn't burned through producing identical failures.
+ */
+const api = async (pathname, init = {}, attempt = 1) => {
+	const MAX_ATTEMPTS = 4;
+	let res;
+	try {
+		res = await fetch(`${SITE}${pathname}`, {
+			...init,
+			headers: {
+				Authorization: `Bearer ${TOKEN}`,
+				"X-EmDash-Request": "1",
+				...(init.headers ?? {}),
+			},
+		});
+	} catch (error) {
+		// Network-level failure (dropped connection, DNS, sleep/wake).
+		if (attempt < MAX_ATTEMPTS) {
+			await sleep(attempt * 1000);
+			return api(pathname, init, attempt + 1);
+		}
+		throw error;
+	}
+
+	if (res.status === 401) {
+		throw new AuthLostError(
+			"The API token stopped being accepted part-way through the run.\n" +
+				"It has most likely expired or been revoked. Create a fresh token and\n" +
+				"run the same command again — already-imported photos are skipped, so it\n" +
+				"picks up where this left off.",
+		);
+	}
+
+	if (res.status >= 500 && attempt < MAX_ATTEMPTS) {
+		await sleep(attempt * 1000);
+		return api(pathname, init, attempt + 1);
+	}
+
 	const text = await res.text();
 	let body;
 	try {
@@ -204,7 +241,18 @@ const api = async (pathname, init = {}) => {
  * in", and then tries the whole export anyway.
  */
 async function preflight() {
-	const { ok, status, body } = await api("/_emdash/api/content/photos?limit=1");
+	let ok, status, body;
+	try {
+		({ ok, status, body } = await api("/_emdash/api/content/photos?limit=1"));
+	} catch (error) {
+		// api() throws on 401 so a mid-run token death aborts the import. At
+		// startup that is just a bad token, and deserves the fuller diagnosis
+		// below rather than "it stopped working part-way through".
+		if (!(error instanceof AuthLostError)) throw error;
+		ok = false;
+		status = 401;
+		body = null;
+	}
 	if (ok) return;
 
 	const detail =
@@ -440,6 +488,7 @@ async function main() {
 			created++;
 			process.stdout.write(`\r  imported ${created}…`);
 		} catch (error) {
+			if (error instanceof AuthLostError) throw error;
 			failed++;
 			console.warn(`\n  failed: ${photo.uri}\n    ${error.message}`);
 		}
@@ -455,6 +504,10 @@ async function main() {
 }
 
 main().catch((error) => {
+	if (error instanceof AuthLostError) {
+		console.error(`\n\n${error.message}`);
+		process.exit(1);
+	}
 	console.error(error);
 	process.exit(1);
 });
