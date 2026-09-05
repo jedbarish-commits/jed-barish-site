@@ -8,7 +8,6 @@ interface Props {
 	featuredImage?: MediaValue | string;
 	href: string;
 	date?: Date;
-	readingTime?: number;
 	tags?: Array<{ slug: string; label: string }>;
 	bylines?: ContentBylineCredit[];
 }
@@ -19,7 +18,6 @@ const {
 	featuredImage,
 	href,
 	date,
-	readingTime,
 	tags,
 	bylines,
 } = Astro.props;
@@ -81,13 +79,11 @@ const formattedDate = date
 									</span>
 								)}
 							</div>
-							{(formattedDate || readingTime) && <span class="meta-dot" />}
+							{formattedDate && <span class="meta-dot" />}
 						</>
 					)
 				}
 				{formattedDate && <time>{formattedDate}</time>}
-				{formattedDate && readingTime && <span class="meta-dot" />}
-				{readingTime && <span>{readingTime} min</span>}
 			</div>
 			<h2 class="card-title">{title}</h2>
 			{excerpt && <p class="card-excerpt">{excerpt}</p>}

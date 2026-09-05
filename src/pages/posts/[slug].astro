@@ -15,7 +15,6 @@ import {
 import { Comments, CommentForm } from "emdash/ui/comments";
 import Base from "../../layouts/Base.astro";
 import PostCard from "../../components/PostCard.astro";
-import { getReadingTime } from "../../utils/reading-time";
 import { resolveBlogSiteIdentity } from "../../utils/site-identity";
 
 const slug = decodeSlug(Astro.params.slug);
@@ -68,7 +67,6 @@ const seo = getSeoMeta(post, {
 const bylines = post.data.bylines ?? [];
 
 // Get reading time
-const readingTime = getReadingTime(post.data.content);
 
 // This post's tags are already hydrated onto the entry by getEmDashEntry —
 // no extra query needed.
@@ -167,10 +165,6 @@ const publishDate =
 							</div>
 						)
 					}
-					<div class="meta-block">
-						<span class="meta-label">Reading time</span>
-						<span class="meta-value">{readingTime} min</span>
-					</div>
 					{
 						tags.length > 0 && (
 							<div class="meta-block">
@@ -207,15 +201,7 @@ const publishDate =
 								</>
 							)
 						}
-						{
-							publishDate && (
-								<>
-									<time>{publishDate}</time>
-									<span class="meta-dot" />
-								</>
-							)
-						}
-						<span>{readingTime} min read</span>
+						{publishDate && <time>{publishDate}</time>}
 					</div>
 					<h1 class="article-title" {...post.edit.title}>{post.data.title}</h1>
 					{
@@ -266,7 +252,6 @@ const publishDate =
 									featuredImage={p.data.featured_image}
 									href={`/posts/${p.id}`}
 									date={p.data.publishedAt ?? undefined}
-									readingTime={getReadingTime(p.data.content)}
 									tags={postTags.map((t) => ({ slug: t.slug, label: t.label }))}
 									bylines={postBylines}
 								/>
