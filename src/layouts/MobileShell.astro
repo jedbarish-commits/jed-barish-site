@@ -71,7 +71,7 @@ const pageCtx = createPublicPageContext({
 type IconName = "feed" | "grid" | "photos" | "search" | "link";
 function iconFor(url: string): IconName {
 	if (url === "/") return "feed";
-	if (url.startsWith("/posts")) return "grid";
+	if (url.startsWith("/videos")) return "grid";
 	if (url.startsWith("/photos")) return "photos";
 	if (url.startsWith("/search")) return "search";
 	return "link";

@@ -49,7 +49,7 @@ const { items: results } = query
 				<ol class="results">
 					{results.map((result) => (
 						<li>
-							<a href={`/posts/${result.slug ?? result.id}`}>
+							<a href={`/videos/${result.slug ?? result.id}`}>
 								<span class="result-title">{result.title ?? "Untitled"}</span>
 								{result.snippet && (
 									<span class="result-snippet" set:html={result.snippet} />

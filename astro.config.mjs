@@ -8,6 +8,12 @@ import emdash from "emdash/astro";
 
 export default defineConfig({
 	output: "server",
+	// /posts was the public path until the collection was relabelled Videos.
+	// Those URLs were live, so keep them working.
+	redirects: {
+		"/posts": "/videos",
+		"/posts/[slug]": "/videos/[slug]",
+	},
 	adapter: cloudflare(),
 	image: {
 		layout: "constrained",

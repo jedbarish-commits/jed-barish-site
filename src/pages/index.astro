@@ -2,52 +2,89 @@
 import { getEmDashCollection, getSiteSettings } from "emdash";
 import MobileShell from "../layouts/MobileShell.astro";
 import VideoPanel from "../components/VideoPanel.astro";
+import PhotoPanel from "../components/PhotoPanel.astro";
 import { resolveBlogSiteIdentity } from "../utils/site-identity";
 
-const [{ entries: posts, cacheHint }, settings] = await Promise.all([
-	getEmDashCollection("posts", {
-		orderBy: { published_at: "desc" },
-		limit: 50,
-	}),
+// The feed is everything, newest first — videos and photos interleaved. They
+// live in separate collections so each can be managed on its own, and are
+// merged here rather than in the CMS.
+const [videos, photos, settings] = await Promise.all([
+	getEmDashCollection("posts", { orderBy: { published_at: "desc" }, limit: 60 }),
+	getEmDashCollection("photos", { orderBy: { published_at: "desc" }, limit: 60 }),
 	getSiteSettings(),
 ]);
 const { siteTitle, siteTagline } = resolveBlogSiteIdentity(settings);
 
-if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
-
-function formatDate(date: Date | null | undefined) {
-	if (!date) return null;
-	return date.toLocaleDateString("en-US", {
-		year: "numeric",
-		month: "short",
-		day: "numeric",
-	});
+if (Astro.cache?.enabled) {
+	Astro.cache.set(videos.cacheHint);
+	Astro.cache.set(photos.cacheHint);
 }
+
+type FeedItem =
+	| { kind: "video"; at: number; entry: (typeof videos.entries)[number] }
+	| { kind: "photo"; at: number; entry: (typeof photos.entries)[number] };
+
+// A photo's real date is when it was taken, which for an imported back
+// catalogue is years before it was published here. Sort on that, falling back
+// to publish time for anything without it.
+const when = (entry: { data: Record<string, unknown> }) => {
+	const taken = entry.data.taken_at as Date | string | null | undefined;
+	const published = entry.data.publishedAt as Date | null | undefined;
+	const value = taken ?? published;
+	return value ? new Date(value).getTime() : 0;
+};
+
+const feed: FeedItem[] = [
+	...videos.entries.map((entry) => ({ kind: "video" as const, at: when(entry), entry })),
+	...photos.entries.map((entry) => ({ kind: "photo" as const, at: when(entry), entry })),
+].sort((a, b) => b.at - a.at);
+
+const formatDate = (value: Date | string | null | undefined) =>
+	value
+		? new Date(value).toLocaleDateString("en-US", {
+				year: "numeric",
+				month: "short",
+				day: "numeric",
+			})
+		: null;
 ---
 
 <MobileShell title={siteTitle} description={siteTagline} fullBleed>
 	{
-		posts.length === 0 ? (
+		feed.length === 0 ? (
 			<div class="empty">
 				<h1>Nothing here yet</h1>
-				<p>Publish a post and it shows up in the feed.</p>
-				<a href="/_emdash/admin/content/posts" class="empty-btn">
+				<p>Publish a video or a photo and it shows up in the feed.</p>
+				<a href="/_emdash/admin" class="empty-btn">
 					Open admin
 				</a>
 			</div>
 		) : (
 			<div class="feed" data-feed>
-				{posts.map((post, i) => (
-					<VideoPanel
-						title={post.data.title ?? "Untitled"}
-						youtubeId={post.data.youtube_id ?? ""}
-						featuredImage={post.data.featured_image}
-						excerpt={post.data.excerpt}
-						href={`/posts/${post.id}`}
-						date={formatDate(post.data.publishedAt)}
-						index={i}
-					/>
-				))}
+				{feed.map((item, i) =>
+					item.kind === "video" ? (
+						<VideoPanel
+							title={item.entry.data.title ?? "Untitled"}
+							youtubeId={item.entry.data.youtube_id ?? ""}
+							featuredImage={item.entry.data.featured_image}
+							excerpt={item.entry.data.excerpt}
+							href={`/videos/${item.entry.id}`}
+							date={formatDate(item.entry.data.publishedAt)}
+							index={i}
+						/>
+					) : (
+						<PhotoPanel
+							title={item.entry.data.title ?? "Untitled"}
+							image={item.entry.data.image}
+							caption={item.entry.data.caption}
+							location={item.entry.data.location}
+							date={formatDate(
+								item.entry.data.taken_at ?? item.entry.data.publishedAt,
+							)}
+							index={i}
+						/>
+					),
+				)}
 			</div>
 		)
 	}
@@ -106,7 +143,7 @@ function formatDate(date: Date | null | undefined) {
 <script>
 	// Facade player: the YouTube iframe is only created on tap, and torn back
 	// down once its panel scrolls out of view so audio never trails behind the
-	// visible video.
+	// visible video. Photo panels have no player and are simply ignored.
 	const feed = document.querySelector<HTMLElement>("[data-feed]");
 
 	if (feed) {

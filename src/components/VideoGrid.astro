@@ -28,7 +28,7 @@ const formatDate = (date: Date | null | undefined) =>
 	{
 		posts.map((post) => (
 			<li class="post">
-				<a href={`/posts/${post.id}`} class="post-link">
+				<a href={`/videos/${post.id}`} class="post-link">
 					<span class="thumb">
 						{post.data.featured_image ? (
 							<Image image={post.data.featured_image} loading="lazy" />

@@ -50,7 +50,7 @@ const { siteTitle } = resolveBlogSiteIdentity(await getSiteSettings());
 const seo = getSeoMeta(post, {
 	siteTitle,
 	siteUrl: Astro.url.origin,
-	path: `/posts/${slug}`,
+	path: `/videos/${slug}`,
 	defaultOgImage: featuredImageUrl,
 });
 
@@ -183,7 +183,7 @@ const publishDate =
 					<ul>
 						{otherPosts.map((p) => (
 							<li>
-								<a href={`/posts/${p.id}`}>
+								<a href={`/videos/${p.id}`}>
 									<span class="more-thumb">
 										{p.data.featured_image && (
 											<Image image={p.data.featured_image} loading="lazy" />
