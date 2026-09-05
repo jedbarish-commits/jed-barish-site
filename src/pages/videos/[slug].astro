@@ -9,6 +9,7 @@ import {
 import { Image, PortableText } from "emdash/ui";
 import MobileShell from "../../layouts/MobileShell.astro";
 import Reactions from "../../components/Reactions.astro";
+import { titleEchoesCaption } from "../../utils/text";
 import { resolveBlogSiteIdentity } from "../../utils/site-identity";
 
 const slug = decodeSlug(Astro.params.slug);
@@ -153,7 +154,8 @@ const publishDate =
 				}
 			</div>
 			{
-				post.data.excerpt && (
+				post.data.excerpt &&
+					!titleEchoesCaption(post.data.title, post.data.excerpt) && (
 					<p class="excerpt" {...post.edit.excerpt}>
 						{post.data.excerpt}
 					</p>

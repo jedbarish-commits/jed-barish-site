@@ -1,6 +1,7 @@
 ---
 import { Image } from "emdash/ui";
 import Reactions from "./Reactions.astro";
+import { titleEchoesCaption } from "../utils/text";
 
 /**
  * One full-viewport panel in the swipe feed.
@@ -34,6 +35,8 @@ const {
 	index,
 	contentId,
 } = Astro.props;
+
+const showExcerpt = !titleEchoesCaption(title, excerpt);
 ---
 
 <section class="panel" aria-label={title}>
@@ -71,7 +74,7 @@ const {
 			<h2 class="title">
 				<a href={href}>{title}</a>
 			</h2>
-			{excerpt && <p class="excerpt">{excerpt}</p>}
+			{excerpt && showExcerpt && <p class="excerpt">{excerpt}</p>}
 			{contentId && <Reactions collection="posts" contentId={contentId} compact />}
 			{date && <p class="date">{date}</p>}
 		</div>

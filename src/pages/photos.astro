@@ -2,6 +2,7 @@
 import { getEmDashCollection } from "emdash";
 import { Image } from "emdash/ui";
 import MobileShell from "../layouts/MobileShell.astro";
+import { titleEchoesCaption } from "../utils/text";
 
 const PER_PAGE = 48;
 const page = Math.max(1, Number(Astro.url.searchParams.get("page") ?? "1") || 1);
@@ -118,7 +119,9 @@ function fullSrc(img: unknown): string | undefined {
 					<figure class="v-slide">
 						<img src={fullSrc(photo.data.image)} alt={photo.data.title} loading="lazy" />
 						<figcaption>
-							<span class="v-title">{photo.data.title}</span>
+							{!titleEchoesCaption(photo.data.title, photo.data.caption) && (
+								<span class="v-title">{photo.data.title}</span>
+							)}
 							{photo.data.caption && <span class="v-caption">{photo.data.caption}</span>}
 							{photo.data.location && <span class="v-location">{photo.data.location}</span>}
 						</figcaption>

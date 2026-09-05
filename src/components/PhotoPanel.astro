@@ -1,6 +1,7 @@
 ---
 import { Image } from "emdash/ui";
 import Reactions from "./Reactions.astro";
+import { titleEchoesCaption } from "../utils/text";
 
 /**
  * One full-viewport photo panel in the swipe feed, sized to sit alongside
@@ -20,6 +21,10 @@ interface Props {
 }
 
 const { title, image, caption, location, date, index, contentId } = Astro.props;
+
+// The title is usually just the caption's first line, clipped. Showing both
+// prints the same sentence twice, so prefer the caption's full text.
+const showTitle = !titleEchoesCaption(title, caption);
 ---
 
 <section class="panel" aria-label={title}>
@@ -29,8 +34,8 @@ const { title, image, caption, location, date, index, contentId } = Astro.props;
 		</div>
 
 		<div class="meta">
-			<h2 class="title">{title}</h2>
-			{caption && <p class="caption">{caption}</p>}
+			{showTitle && <h2 class="title">{title}</h2>}
+			{caption ? <p class:list={["caption", { lead: !showTitle }]}>{caption}</p> : null}
 			{contentId && <Reactions collection="photos" contentId={contentId} compact />}
 			<p class="sub">
 				{location && <span class="location">{location}</span>}
@@ -101,6 +106,12 @@ const { title, image, caption, location, date, index, contentId } = Astro.props;
 		font-size: 0.9375rem;
 		line-height: 1.5;
 		color: rgb(255 255 255 / 0.66);
+	}
+
+	/* Standing in for the title, so it carries the weight instead. */
+	.caption.lead {
+		font-size: 1rem;
+		color: rgb(255 255 255 / 0.86);
 	}
 
 	.sub {
