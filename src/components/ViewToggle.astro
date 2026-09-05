@@ -1,0 +1,124 @@
+---
+/**
+ * Grid/list switcher for a VideoGrid on the same page. Sets `data-view` on
+ * the grid's `[data-posts]` element and remembers the choice per visitor.
+ */
+---
+
+<div class="view-toggle" role="group" aria-label="View">
+	<button type="button" data-view="grid" aria-pressed="false">
+		<span class="visually-hidden">Grid view</span>
+		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<rect x="3" y="3" width="7.5" height="7.5" rx="2"></rect>
+			<rect x="13.5" y="3" width="7.5" height="7.5" rx="2"></rect>
+			<rect x="3" y="13.5" width="7.5" height="7.5" rx="2"></rect>
+			<rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"></rect>
+		</svg>
+	</button>
+	<button type="button" data-view="list" aria-pressed="false">
+		<span class="visually-hidden">List view</span>
+		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<path d="M4 6h16M4 12h16M4 18h16"></path>
+		</svg>
+	</button>
+</div>
+
+<style>
+	.view-toggle {
+		display: flex;
+		gap: 2px;
+		padding: 3px;
+		border-radius: 999px;
+		background: rgb(255 255 255 / 0.07);
+		border: 1px solid rgb(255 255 255 / 0.1);
+		flex-shrink: 0;
+	}
+
+	.view-toggle button {
+		display: grid;
+		place-items: center;
+		width: 38px;
+		height: 34px;
+		padding: 0;
+		border: 0;
+		border-radius: 999px;
+		background: none;
+		color: rgb(255 255 255 / 0.5);
+		cursor: pointer;
+		transition:
+			background var(--transition-fast),
+			color var(--transition-fast);
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.view-toggle button svg {
+		width: 18px;
+		height: 18px;
+	}
+
+	.view-toggle button[aria-pressed="true"] {
+		background: rgb(255 255 255 / 0.14);
+		color: #fff;
+	}
+
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	@media (hover: hover) {
+		.view-toggle button:hover {
+			color: #fff;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.view-toggle button {
+			transition: none;
+		}
+	}
+</style>
+
+<script>
+	// Cosmetic, per-visitor preference — localStorage, with every access
+	// guarded since private windows and blocked site data throw here.
+	const KEY = "posts-view";
+	const list = document.querySelector<HTMLElement>("[data-posts]");
+	const buttons = document.querySelectorAll<HTMLButtonElement>("[data-view]");
+
+	if (list && buttons.length) {
+		const read = (): "grid" | "list" => {
+			try {
+				return localStorage.getItem(KEY) === "list" ? "list" : "grid";
+			} catch {
+				return "grid";
+			}
+		};
+
+		const apply = (view: "grid" | "list") => {
+			if (view === "list") list.dataset.view = "list";
+			else delete list.dataset.view;
+			for (const button of buttons) {
+				button.setAttribute("aria-pressed", String(button.dataset.view === view));
+			}
+		};
+
+		apply(read());
+
+		for (const button of buttons) {
+			button.addEventListener("click", () => {
+				const view = button.dataset.view === "list" ? "list" : "grid";
+				apply(view);
+				try {
+					localStorage.setItem(KEY, view);
+				} catch {
+					// Preference just won't persist; the toggle still works.
+				}
+			});
+		}
+	}
+</script>

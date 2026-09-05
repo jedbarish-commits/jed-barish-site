@@ -1,0 +1,275 @@
+---
+import { getEmDashCollection } from "emdash";
+import { Image } from "emdash/ui";
+import MobileShell from "../layouts/MobileShell.astro";
+
+const { entries: photos, cacheHint } = await getEmDashCollection("photos", {
+	orderBy: { published_at: "desc" },
+});
+
+if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
+
+// The image may carry a direct src (a linked URL) or a storageKey (uploaded
+// to R2). The lightbox needs the full-size original either way.
+function fullSrc(img: unknown): string | undefined {
+	if (!img || typeof img !== "object") return undefined;
+	const image = img as Record<string, unknown>;
+	if (typeof image.src === "string" && image.src) return image.src;
+	const meta = image.meta as Record<string, unknown> | undefined;
+	const key =
+		(typeof meta?.storageKey === "string" ? meta.storageKey : undefined) ||
+		(typeof image.id === "string" ? image.id : undefined);
+	return key ? `/_emdash/api/media/file/${key}` : undefined;
+}
+---
+
+<MobileShell title="Photos" description="Photographs by Jed Barish">
+	<div class="photos-page">
+		<header class="page-head">
+			<h1>Photos</h1>
+			<p>{photos.length} {photos.length === 1 ? "photo" : "photos"}</p>
+		</header>
+
+		{
+			photos.length === 0 ? (
+				<div class="empty">
+					<p>No photos yet.</p>
+					<a href="/_emdash/admin/content/photos/new" class="btn">
+						Add a photo
+					</a>
+				</div>
+			) : (
+				<ul class="grid">
+					{photos.map((photo) => (
+						<li>
+							<button
+								type="button"
+								class="tile"
+								data-full={fullSrc(photo.data.image)}
+								data-title={photo.data.title}
+								data-caption={photo.data.caption ?? ""}
+								data-location={photo.data.location ?? ""}
+							>
+								<Image image={photo.data.image} loading="lazy" />
+							</button>
+						</li>
+					))}
+				</ul>
+			)
+		}
+	</div>
+
+	<div class="lightbox" data-lightbox hidden>
+		<button type="button" class="lb-close" data-close aria-label="Close">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+				<path d="M6 6l12 12M18 6L6 18"></path>
+			</svg>
+		</button>
+		<figure>
+			<img data-lb-img alt="" />
+			<figcaption>
+				<span class="lb-title" data-lb-title></span>
+				<span class="lb-caption" data-lb-caption></span>
+				<span class="lb-location" data-lb-location></span>
+			</figcaption>
+		</figure>
+	</div>
+</MobileShell>
+
+<style>
+	.photos-page {
+		padding: calc(env(safe-area-inset-top, 0px) + var(--spacing-6))
+			var(--spacing-5) 120px;
+	}
+
+	.page-head h1 {
+		margin: 0;
+		font-size: 1.75rem;
+		font-weight: 700;
+		letter-spacing: var(--tracking-tight);
+	}
+
+	.page-head p {
+		margin: 4px 0 var(--spacing-6);
+		font-size: 0.8125rem;
+		color: rgb(255 255 255 / 0.45);
+	}
+
+	.grid {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: var(--spacing-2);
+	}
+
+	.tile {
+		display: block;
+		width: 100%;
+		aspect-ratio: 1;
+		padding: 0;
+		border: 0;
+		border-radius: 10px;
+		overflow: hidden;
+		background: #17171a;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.tile :global(img) {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	.empty {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--spacing-3);
+	}
+
+	.empty p {
+		margin: 0;
+		color: rgb(255 255 255 / 0.5);
+		font-size: 0.9375rem;
+	}
+
+	.btn {
+		padding: 10px 20px;
+		border-radius: 999px;
+		background: rgb(255 255 255 / 0.12);
+		border: 1px solid rgb(255 255 255 / 0.16);
+		color: #fff;
+		text-decoration: none;
+		font-size: 0.875rem;
+	}
+
+	/* Lightbox */
+	.lightbox {
+		position: fixed;
+		inset: 0;
+		z-index: 80;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: var(--spacing-5);
+		background: rgb(0 0 0 / 0.94);
+		backdrop-filter: blur(8px);
+		-webkit-backdrop-filter: blur(8px);
+	}
+
+	.lightbox[hidden] {
+		display: none;
+	}
+
+	.lightbox figure {
+		margin: 0;
+		max-width: 100%;
+		max-height: 100%;
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-3);
+	}
+
+	.lightbox img {
+		max-width: 100%;
+		max-height: 70vh;
+		object-fit: contain;
+		border-radius: 10px;
+		display: block;
+		margin: 0 auto;
+	}
+
+	.lightbox figcaption {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		text-align: center;
+	}
+
+	.lb-title {
+		font-size: 0.9375rem;
+		font-weight: 600;
+	}
+
+	.lb-caption {
+		font-size: 0.875rem;
+		line-height: 1.5;
+		color: rgb(255 255 255 / 0.66);
+	}
+
+	.lb-caption:empty,
+	.lb-location:empty {
+		display: none;
+	}
+
+	.lb-location {
+		font-size: 0.6875rem;
+		text-transform: uppercase;
+		letter-spacing: var(--tracking-wide);
+		color: rgb(255 255 255 / 0.4);
+	}
+
+	.lb-close {
+		position: absolute;
+		top: calc(env(safe-area-inset-top, 0px) + 12px);
+		right: 12px;
+		width: 38px;
+		height: 38px;
+		display: grid;
+		place-items: center;
+		border: 0;
+		border-radius: 50%;
+		background: rgb(255 255 255 / 0.12);
+		color: #fff;
+		cursor: pointer;
+	}
+
+	.lb-close svg {
+		width: 19px;
+		height: 19px;
+	}
+</style>
+
+<script>
+	const lightbox = document.querySelector<HTMLElement>("[data-lightbox]");
+	const img = document.querySelector<HTMLImageElement>("[data-lb-img]");
+	const titleEl = document.querySelector<HTMLElement>("[data-lb-title]");
+	const captionEl = document.querySelector<HTMLElement>("[data-lb-caption]");
+	const locationEl = document.querySelector<HTMLElement>("[data-lb-location]");
+
+	function close() {
+		if (!lightbox) return;
+		lightbox.hidden = true;
+		document.documentElement.style.overflow = "";
+		if (img) img.src = "";
+	}
+
+	for (const tile of document.querySelectorAll<HTMLElement>(".tile")) {
+		tile.addEventListener("click", () => {
+			if (!lightbox || !img) return;
+			const full = tile.dataset.full;
+			if (!full) return;
+			img.src = full;
+			img.alt = tile.dataset.title ?? "";
+			if (titleEl) titleEl.textContent = tile.dataset.title ?? "";
+			if (captionEl) captionEl.textContent = tile.dataset.caption ?? "";
+			if (locationEl) locationEl.textContent = tile.dataset.location ?? "";
+			lightbox.hidden = false;
+			// Stop the page behind the overlay from scrolling under it.
+			document.documentElement.style.overflow = "hidden";
+		});
+	}
+
+	lightbox?.addEventListener("click", (event) => {
+		const target = event.target as HTMLElement;
+		if (target.closest("[data-close]") || target === lightbox) close();
+	});
+
+	document.addEventListener("keydown", (event) => {
+		if (event.key === "Escape" && lightbox && !lightbox.hidden) close();
+	});
+</script>

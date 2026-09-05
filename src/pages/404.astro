@@ -1,33 +1,56 @@
 ---
-import Base from "../layouts/Base.astro";
+import MobileShell from "../layouts/MobileShell.astro";
 ---
 
-<Base title="Page not found">
+<MobileShell title="Page not found">
 	<div class="not-found">
-		<h1>404</h1>
-		<p>The page you're looking for doesn't exist.</p>
-		<a href="/">Go back home</a>
+		<p class="code">404</p>
+		<h1>This page doesn't exist</h1>
+		<p class="hint">It may have moved, or the link is out of date.</p>
+		<a href="/" class="btn">Back to the feed</a>
 	</div>
-</Base>
+</MobileShell>
 
 <style>
 	.not-found {
+		min-height: 70vh;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
 		text-align: center;
-		padding: var(--spacing-24) var(--spacing-6);
+		gap: var(--spacing-2);
+		padding: var(--spacing-6) var(--spacing-5) 120px;
 	}
 
-	.not-found h1 {
-		font-size: var(--font-size-5xl);
-		margin-bottom: var(--spacing-2);
-		color: var(--color-border);
+	.code {
+		margin: 0;
+		font-size: 3rem;
+		font-weight: 700;
+		letter-spacing: var(--tracking-tight);
+		color: rgb(255 255 255 / 0.16);
 	}
 
-	.not-found p {
-		color: var(--color-muted);
-		margin-bottom: var(--spacing-6);
+	h1 {
+		margin: 0;
+		font-size: 1.25rem;
+		font-weight: 600;
 	}
 
-	.not-found a {
-		color: var(--color-text);
+	.hint {
+		margin: 0;
+		font-size: 0.9375rem;
+		color: rgb(255 255 255 / 0.5);
+	}
+
+	.btn {
+		margin-top: var(--spacing-4);
+		padding: 11px 22px;
+		border-radius: 999px;
+		background: rgb(255 255 255 / 0.12);
+		border: 1px solid rgb(255 255 255 / 0.16);
+		color: #fff;
+		text-decoration: none;
+		font-size: 0.875rem;
 	}
 </style>

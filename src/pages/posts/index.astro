@@ -1,83 +1,31 @@
 ---
 import { getEmDashCollection } from "emdash";
-import { Image } from "emdash/ui";
 import MobileShell from "../../layouts/MobileShell.astro";
+import VideoGrid from "../../components/VideoGrid.astro";
+import ViewToggle from "../../components/ViewToggle.astro";
 
 const { entries: posts, cacheHint } = await getEmDashCollection("posts", {
 	orderBy: { published_at: "desc" },
 });
 
 if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
-
-const formatDate = (date: Date | null | undefined) =>
-	date
-		? date.toLocaleDateString("en-US", {
-				year: "numeric",
-				month: "short",
-				day: "numeric",
-			})
-		: null;
 ---
 
 <MobileShell title="Posts" description="Every video, newest first">
 	<div class="posts-page">
 		<header class="page-head">
-			<div class="head-text">
+			<div>
 				<h1>Posts</h1>
 				<p>{posts.length} {posts.length === 1 ? "video" : "videos"}</p>
 			</div>
-
-			<div class="view-toggle" role="group" aria-label="View">
-				<button type="button" data-view="grid" aria-pressed="false">
-					<span class="visually-hidden">Grid view</span>
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<rect x="3" y="3" width="7.5" height="7.5" rx="2"></rect>
-						<rect x="13.5" y="3" width="7.5" height="7.5" rx="2"></rect>
-						<rect x="3" y="13.5" width="7.5" height="7.5" rx="2"></rect>
-						<rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"></rect>
-					</svg>
-				</button>
-				<button type="button" data-view="list" aria-pressed="false">
-					<span class="visually-hidden">List view</span>
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<path d="M4 6h16M4 12h16M4 18h16"></path>
-					</svg>
-				</button>
-			</div>
+			{posts.length > 0 && <ViewToggle />}
 		</header>
 
 		{
 			posts.length === 0 ? (
 				<p class="empty">Nothing published yet.</p>
 			) : (
-				<ul class="posts" data-posts>
-					{posts.map((post) => (
-						<li class="post">
-							<a href={`/posts/${post.id}`} class="post-link">
-								<span class="thumb">
-									{post.data.featured_image ? (
-										<Image image={post.data.featured_image} loading="lazy" />
-									) : (
-										<span class="thumb-empty" aria-hidden="true" />
-									)}
-									<span class="thumb-play" aria-hidden="true">
-										<svg viewBox="0 0 24 24" fill="currentColor">
-											<path d="M8 5.5v13l11-6.5z" />
-										</svg>
-									</span>
-								</span>
-								<span class="post-text">
-									<span class="post-title">{post.data.title}</span>
-									{formatDate(post.data.publishedAt) && (
-										<span class="post-date">
-											{formatDate(post.data.publishedAt)}
-										</span>
-									)}
-								</span>
-							</a>
-						</li>
-					))}
-				</ul>
+				<VideoGrid posts={posts} />
 			)
 		}
 	</div>
@@ -97,235 +45,21 @@ const formatDate = (date: Date | null | undefined) =>
 		margin-bottom: var(--spacing-6);
 	}
 
-	.head-text h1 {
+	.page-head h1 {
 		font-size: 1.75rem;
 		font-weight: 700;
 		letter-spacing: var(--tracking-tight);
 		margin: 0;
 	}
 
-	.head-text p {
+	.page-head p {
 		margin: 4px 0 0;
 		font-size: 0.8125rem;
 		color: rgb(255 255 255 / 0.45);
-	}
-
-	.view-toggle {
-		display: flex;
-		gap: 2px;
-		padding: 3px;
-		border-radius: 999px;
-		background: rgb(255 255 255 / 0.07);
-		border: 1px solid rgb(255 255 255 / 0.1);
-		flex-shrink: 0;
-	}
-
-	.view-toggle button {
-		display: grid;
-		place-items: center;
-		width: 38px;
-		height: 34px;
-		padding: 0;
-		border: 0;
-		border-radius: 999px;
-		background: none;
-		color: rgb(255 255 255 / 0.5);
-		cursor: pointer;
-		transition:
-			background var(--transition-fast),
-			color var(--transition-fast);
-		-webkit-tap-highlight-color: transparent;
-	}
-
-	.view-toggle button svg {
-		width: 18px;
-		height: 18px;
-	}
-
-	.view-toggle button[aria-pressed="true"] {
-		background: rgb(255 255 255 / 0.14);
-		color: #fff;
-	}
-
-	.posts {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-	}
-
-	.post-link {
-		display: block;
-		text-decoration: none;
-		color: inherit;
-		-webkit-tap-highlight-color: transparent;
-	}
-
-	.thumb {
-		position: relative;
-		display: block;
-		aspect-ratio: 16 / 9;
-		border-radius: 10px;
-		overflow: hidden;
-		background: #17171a;
-	}
-
-	.thumb :global(img) {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		display: block;
-	}
-
-	.thumb-empty {
-		display: block;
-		width: 100%;
-		height: 100%;
-	}
-
-	.thumb-play {
-		position: absolute;
-		right: 6px;
-		bottom: 6px;
-		width: 22px;
-		height: 22px;
-		display: grid;
-		place-items: center;
-		border-radius: 50%;
-		color: #111;
-		background: rgb(255 255 255 / 0.9);
-	}
-
-	.thumb-play svg {
-		width: 13px;
-		height: 13px;
-		margin-left: 1px;
-	}
-
-	.post-title {
-		display: block;
-		font-weight: 600;
-		line-height: 1.3;
-		letter-spacing: var(--tracking-tight);
-	}
-
-	.post-date {
-		display: block;
-		font-size: 0.6875rem;
-		letter-spacing: var(--tracking-wide);
-		text-transform: uppercase;
-		color: rgb(255 255 255 / 0.4);
-	}
-
-	/* --- Grid view (default) --- */
-	.posts {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: var(--spacing-5) var(--spacing-3);
-	}
-
-	.posts .post-text {
-		display: block;
-		margin-top: var(--spacing-2);
-	}
-
-	.posts .post-title {
-		font-size: 0.875rem;
-	}
-
-	.posts .post-date {
-		margin-top: 3px;
-	}
-
-	/* --- List view --- */
-	.posts[data-view="list"] {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.posts[data-view="list"] .post-link {
-		display: grid;
-		grid-template-columns: 128px 1fr;
-		gap: var(--spacing-3);
-		align-items: center;
-		padding: var(--spacing-2) 0;
-	}
-
-	.posts[data-view="list"] .post-title {
-		font-size: 0.9375rem;
-	}
-
-	.posts[data-view="list"] .post-date {
-		margin-top: 5px;
 	}
 
 	.empty {
 		color: rgb(255 255 255 / 0.5);
 		font-size: 0.9375rem;
 	}
-
-	.visually-hidden {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
-	}
-
-	@media (hover: hover) {
-		.view-toggle button:hover {
-			color: #fff;
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.view-toggle button {
-			transition: none;
-		}
-	}
 </style>
-
-<script>
-	// View preference is per-visitor and cosmetic, so localStorage is the right
-	// home for it. Every access is guarded: private windows and blocked site
-	// data make these throw rather than return null.
-	const KEY = "posts-view";
-	const list = document.querySelector<HTMLElement>("[data-posts]");
-	const buttons = document.querySelectorAll<HTMLButtonElement>("[data-view]");
-
-	function read(): "grid" | "list" {
-		try {
-			return localStorage.getItem(KEY) === "list" ? "list" : "grid";
-		} catch {
-			return "grid";
-		}
-	}
-
-	function apply(view: "grid" | "list") {
-		if (list) {
-			if (view === "list") list.dataset.view = "list";
-			else delete list.dataset.view;
-		}
-		for (const button of buttons) {
-			button.setAttribute(
-				"aria-pressed",
-				String(button.dataset.view === view),
-			);
-		}
-	}
-
-	apply(read());
-
-	for (const button of buttons) {
-		button.addEventListener("click", () => {
-			const view = button.dataset.view === "list" ? "list" : "grid";
-			apply(view);
-			try {
-				localStorage.setItem(KEY, view);
-			} catch {
-				// Preference just won't persist; the toggle still works.
-			}
-		});
-	}
-</script>

@@ -68,10 +68,11 @@ const pageCtx = createPublicPageContext({
 
 // Nav is CMS-driven off the primary menu, with an icon chosen per URL.
 // Search is always appended — it has no menu entry but the shell needs it.
-type IconName = "feed" | "grid" | "search" | "link";
+type IconName = "feed" | "grid" | "photos" | "search" | "link";
 function iconFor(url: string): IconName {
 	if (url === "/") return "feed";
 	if (url.startsWith("/posts")) return "grid";
+	if (url.startsWith("/photos")) return "photos";
 	if (url.startsWith("/search")) return "search";
 	return "link";
 }

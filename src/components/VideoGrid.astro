@@ -1,0 +1,162 @@
+---
+import { Image } from "emdash/ui";
+
+/**
+ * Thumbnail-led list of video posts, shared by /posts and the tag and
+ * category archives. Pair it with ViewToggle to offer a list layout.
+ */
+interface Props {
+	posts: Array<{
+		id: string;
+		data: { title?: string; featured_image?: unknown; publishedAt?: Date | null };
+	}>;
+}
+
+const { posts } = Astro.props;
+
+const formatDate = (date: Date | null | undefined) =>
+	date
+		? date.toLocaleDateString("en-US", {
+				year: "numeric",
+				month: "short",
+				day: "numeric",
+			})
+		: null;
+---
+
+<ul class="posts" data-posts>
+	{
+		posts.map((post) => (
+			<li class="post">
+				<a href={`/posts/${post.id}`} class="post-link">
+					<span class="thumb">
+						{post.data.featured_image ? (
+							<Image image={post.data.featured_image} loading="lazy" />
+						) : (
+							<span class="thumb-empty" aria-hidden="true" />
+						)}
+						<span class="thumb-play" aria-hidden="true">
+							<svg viewBox="0 0 24 24" fill="currentColor">
+								<path d="M8 5.5v13l11-6.5z" />
+							</svg>
+						</span>
+					</span>
+					<span class="post-text">
+						<span class="post-title">{post.data.title}</span>
+						{formatDate(post.data.publishedAt) && (
+							<span class="post-date">{formatDate(post.data.publishedAt)}</span>
+						)}
+					</span>
+				</a>
+			</li>
+		))
+	}
+</ul>
+
+<style>
+	.posts {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: var(--spacing-5) var(--spacing-3);
+	}
+
+	.post-link {
+		display: block;
+		text-decoration: none;
+		color: inherit;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.thumb {
+		position: relative;
+		display: block;
+		aspect-ratio: 16 / 9;
+		border-radius: 10px;
+		overflow: hidden;
+		background: #17171a;
+	}
+
+	.thumb :global(img) {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	.thumb-empty {
+		display: block;
+		width: 100%;
+		height: 100%;
+	}
+
+	.thumb-play {
+		position: absolute;
+		right: 6px;
+		bottom: 6px;
+		width: 22px;
+		height: 22px;
+		display: grid;
+		place-items: center;
+		border-radius: 50%;
+		color: #111;
+		background: rgb(255 255 255 / 0.9);
+	}
+
+	.thumb-play svg {
+		width: 13px;
+		height: 13px;
+		margin-left: 1px;
+	}
+
+	.post-text {
+		display: block;
+		margin-top: var(--spacing-2);
+	}
+
+	.post-title {
+		display: block;
+		font-size: 0.875rem;
+		font-weight: 600;
+		line-height: 1.3;
+		letter-spacing: var(--tracking-tight);
+	}
+
+	.post-date {
+		display: block;
+		margin-top: 3px;
+		font-size: 0.6875rem;
+		letter-spacing: var(--tracking-wide);
+		text-transform: uppercase;
+		color: rgb(255 255 255 / 0.4);
+	}
+
+	/* List view — toggled by ViewToggle setting data-view on this element. */
+	.posts[data-view="list"] {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.posts[data-view="list"] .post-link {
+		display: grid;
+		grid-template-columns: 128px 1fr;
+		gap: var(--spacing-3);
+		align-items: center;
+		padding: var(--spacing-2) 0;
+	}
+
+	.posts[data-view="list"] .post-text {
+		margin-top: 0;
+	}
+
+	.posts[data-view="list"] .post-title {
+		font-size: 0.9375rem;
+	}
+
+	.posts[data-view="list"] .post-date {
+		margin-top: 5px;
+	}
+</style>
