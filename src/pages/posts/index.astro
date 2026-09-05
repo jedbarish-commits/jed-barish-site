@@ -1,272 +1,331 @@
 ---
-import { getEmDashCollection, getTermsForEntries } from "emdash";
-import Base from "../../layouts/Base.astro";
-import { getReadingTime } from "../../utils/reading-time";
+import { getEmDashCollection } from "emdash";
+import { Image } from "emdash/ui";
+import MobileShell from "../../layouts/MobileShell.astro";
 
-// Sort in the database rather than in JS — lets the DB use its index on
-// published_at and avoids a full-table scan on the client.
 const { entries: posts, cacheHint } = await getEmDashCollection("posts", {
 	orderBy: { published_at: "desc" },
 });
 
 if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
 
-// Single batched query for tags across all posts, instead of one
-// getEntryTerms() call per post (which would be N round-trips).
-// Bylines are already hydrated on entry.data.bylines.
-const tagsByEntry = await getTermsForEntries(
-	"posts",
-	posts.map((p) => p.data.id),
-	"tag",
-);
-
-const postsWithTags = posts.map((post) => ({
-	post,
-	tags: tagsByEntry.get(post.data.id) ?? [],
-	bylines: post.data.bylines ?? [],
-}));
-
-const formatDate = (date: Date) =>
-	date.toLocaleDateString("en-US", {
-		year: "numeric",
-		month: "long",
-		day: "numeric",
-	});
+const formatDate = (date: Date | null | undefined) =>
+	date
+		? date.toLocaleDateString("en-US", {
+				year: "numeric",
+				month: "short",
+				day: "numeric",
+			})
+		: null;
 ---
 
-<Base title="All Posts" description="Browse all blog posts">
+<MobileShell title="Posts" description="Every video, newest first">
 	<div class="posts-page">
-		<header class="page-header">
-			<h1 class="page-title">All Posts</h1>
-			<p class="page-description">
-				{posts.length}
-				{posts.length === 1 ? "article" : "articles"}
-			</p>
+		<header class="page-head">
+			<div class="head-text">
+				<h1>Posts</h1>
+				<p>{posts.length} {posts.length === 1 ? "video" : "videos"}</p>
+			</div>
+
+			<div class="view-toggle" role="group" aria-label="View">
+				<button type="button" data-view="grid" aria-pressed="false">
+					<span class="visually-hidden">Grid view</span>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<rect x="3" y="3" width="7.5" height="7.5" rx="2"></rect>
+						<rect x="13.5" y="3" width="7.5" height="7.5" rx="2"></rect>
+						<rect x="3" y="13.5" width="7.5" height="7.5" rx="2"></rect>
+						<rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"></rect>
+					</svg>
+				</button>
+				<button type="button" data-view="list" aria-pressed="false">
+					<span class="visually-hidden">List view</span>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M4 6h16M4 12h16M4 18h16"></path>
+					</svg>
+				</button>
+			</div>
 		</header>
 
 		{
 			posts.length === 0 ? (
-				<p class="empty">No posts yet.</p>
+				<p class="empty">Nothing published yet.</p>
 			) : (
-				<div class="posts-list">
-					{postsWithTags.map(({ post, tags, bylines }) => (
-						<article class="post-item">
+				<ul class="posts" data-posts>
+					{posts.map((post) => (
+						<li class="post">
 							<a href={`/posts/${post.id}`} class="post-link">
-								<div class="post-meta">
-									{bylines.length > 0 && (
-										<>
-											<div class="post-bylines">
-												{bylines.slice(0, 2).map((credit, index) => (
-													<>
-														{index > 0 && <span class="byline-sep">,</span>}
-														<span class="post-byline">
-															{credit.byline.avatarMediaId && (
-																<img
-																	src={`/_emdash/api/media/file/${credit.byline.avatarMediaId}`}
-																	alt={credit.byline.displayName}
-																	class="post-byline-avatar"
-																/>
-															)}
-															<span class="post-byline-name">
-																{credit.byline.displayName}
-															</span>
-														</span>
-													</>
-												))}
-												{bylines.length > 2 && (
-													<span class="byline-more">+{bylines.length - 2}</span>
-												)}
-											</div>
-											<span class="meta-dot" />
-										</>
+								<span class="thumb">
+									{post.data.featured_image ? (
+										<Image image={post.data.featured_image} loading="lazy" />
+									) : (
+										<span class="thumb-empty" aria-hidden="true" />
 									)}
-									{post.data.publishedAt && (
-										<time>{formatDate(post.data.publishedAt)}</time>
+									<span class="thumb-play" aria-hidden="true">
+										<svg viewBox="0 0 24 24" fill="currentColor">
+											<path d="M8 5.5v13l11-6.5z" />
+										</svg>
+									</span>
+								</span>
+								<span class="post-text">
+									<span class="post-title">{post.data.title}</span>
+									{formatDate(post.data.publishedAt) && (
+										<span class="post-date">
+											{formatDate(post.data.publishedAt)}
+										</span>
 									)}
-									{post.data.publishedAt && <span class="meta-dot" />}
-									<span>{getReadingTime(post.data.content)} min read</span>
-								</div>
-								<h2 class="post-title">{post.data.title}</h2>
-								{post.data.excerpt && (
-									<p class="post-excerpt">{post.data.excerpt}</p>
-								)}
+								</span>
 							</a>
-							{tags.length > 0 && (
-								<div class="post-tags">
-									{tags.slice(0, 3).map((t) => (
-										<a href={`/tag/${t.slug}`} class="post-tag">
-											{t.label}
-										</a>
-									))}
-								</div>
-							)}
-						</article>
+						</li>
 					))}
-				</div>
+				</ul>
 			)
 		}
 	</div>
-</Base>
+</MobileShell>
 
 <style>
 	.posts-page {
-		max-width: var(--content-width);
-		margin: 0 auto;
-		padding: var(--spacing-8) var(--spacing-6) var(--spacing-16);
+		padding: calc(env(safe-area-inset-top, 0px) + var(--spacing-6))
+			var(--spacing-5) 120px;
 	}
 
-	.page-header {
-		margin-bottom: var(--spacing-12);
-	}
-
-	.page-title {
-		font-size: var(--font-size-4xl);
-		font-weight: var(--font-weight-display);
-		letter-spacing: var(--tracking-tight);
-		margin-bottom: var(--spacing-2);
-	}
-
-	.page-description {
-		font-size: var(--font-size-lg);
-		color: var(--color-muted);
-	}
-
-	.empty {
-		color: var(--color-muted);
-		font-size: var(--font-size-lg);
-	}
-
-	.posts-list {
+	.page-head {
 		display: flex;
-		flex-direction: column;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: var(--spacing-4);
+		margin-bottom: var(--spacing-6);
 	}
 
-	.post-item {
-		padding: var(--spacing-8) 0;
-		border-bottom: 1px solid var(--color-border-subtle);
+	.head-text h1 {
+		font-size: 1.75rem;
+		font-weight: 700;
+		letter-spacing: var(--tracking-tight);
+		margin: 0;
 	}
 
-	.post-item:first-child {
-		padding-top: 0;
+	.head-text p {
+		margin: 4px 0 0;
+		font-size: 0.8125rem;
+		color: rgb(255 255 255 / 0.45);
 	}
 
-	.post-item:last-child {
-		border-bottom: none;
+	.view-toggle {
+		display: flex;
+		gap: 2px;
+		padding: 3px;
+		border-radius: 999px;
+		background: rgb(255 255 255 / 0.07);
+		border: 1px solid rgb(255 255 255 / 0.1);
+		flex-shrink: 0;
+	}
+
+	.view-toggle button {
+		display: grid;
+		place-items: center;
+		width: 38px;
+		height: 34px;
+		padding: 0;
+		border: 0;
+		border-radius: 999px;
+		background: none;
+		color: rgb(255 255 255 / 0.5);
+		cursor: pointer;
+		transition:
+			background var(--transition-fast),
+			color var(--transition-fast);
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.view-toggle button svg {
+		width: 18px;
+		height: 18px;
+	}
+
+	.view-toggle button[aria-pressed="true"] {
+		background: rgb(255 255 255 / 0.14);
+		color: #fff;
+	}
+
+	.posts {
+		list-style: none;
+		margin: 0;
+		padding: 0;
 	}
 
 	.post-link {
 		display: block;
 		text-decoration: none;
 		color: inherit;
+		-webkit-tap-highlight-color: transparent;
 	}
 
-	.post-meta {
-		display: flex;
-		align-items: center;
-		gap: var(--spacing-3);
-		font-size: var(--font-size-sm);
-		color: var(--color-muted);
-		margin-bottom: var(--spacing-2);
+	.thumb {
+		position: relative;
+		display: block;
+		aspect-ratio: 16 / 9;
+		border-radius: 10px;
+		overflow: hidden;
+		background: #17171a;
 	}
 
-	.meta-dot {
-		width: 3px;
-		height: 3px;
-		border-radius: 50%;
-		background: var(--color-muted);
-	}
-
-	/* Post bylines */
-	.post-bylines {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-	}
-
-	.post-byline {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--spacing-1);
-	}
-
-	.post-byline-avatar {
-		width: var(--avatar-size-sm);
-		height: var(--avatar-size-sm);
-		border-radius: 50%;
+	.thumb :global(img) {
+		width: 100%;
+		height: 100%;
 		object-fit: cover;
+		display: block;
 	}
 
-	.post-byline-name {
-		font-weight: 500;
-		color: var(--color-text-secondary);
+	.thumb-empty {
+		display: block;
+		width: 100%;
+		height: 100%;
 	}
 
-	.byline-sep {
-		color: var(--color-muted);
-		margin-right: 2px;
+	.thumb-play {
+		position: absolute;
+		right: 6px;
+		bottom: 6px;
+		width: 22px;
+		height: 22px;
+		display: grid;
+		place-items: center;
+		border-radius: 50%;
+		color: #111;
+		background: rgb(255 255 255 / 0.9);
 	}
 
-	.byline-more {
-		font-size: var(--font-size-xs);
-		color: var(--color-muted);
-		margin-left: 2px;
+	.thumb-play svg {
+		width: 13px;
+		height: 13px;
+		margin-left: 1px;
 	}
 
 	.post-title {
-		font-size: var(--font-size-2xl);
-		font-weight: var(--font-weight-heading);
-		line-height: var(--leading-snug);
-		letter-spacing: var(--tracking-snug);
-		margin-bottom: var(--spacing-2);
-		transition: color var(--transition-fast);
+		display: block;
+		font-weight: 600;
+		line-height: 1.3;
+		letter-spacing: var(--tracking-tight);
 	}
 
-	.post-link:hover .post-title {
-		color: var(--color-brand);
+	.post-date {
+		display: block;
+		font-size: 0.6875rem;
+		letter-spacing: var(--tracking-wide);
+		text-transform: uppercase;
+		color: rgb(255 255 255 / 0.4);
 	}
 
-	.post-excerpt {
-		font-size: var(--font-size-lg);
-		line-height: var(--leading-relaxed);
-		color: var(--color-text-secondary);
+	/* --- Grid view (default) --- */
+	.posts {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: var(--spacing-5) var(--spacing-3);
 	}
 
-	.post-tags {
+	.posts .post-text {
+		display: block;
+		margin-top: var(--spacing-2);
+	}
+
+	.posts .post-title {
+		font-size: 0.875rem;
+	}
+
+	.posts .post-date {
+		margin-top: 3px;
+	}
+
+	/* --- List view --- */
+	.posts[data-view="list"] {
 		display: flex;
-		flex-wrap: wrap;
-		gap: var(--spacing-2);
-		margin-top: var(--spacing-4);
+		flex-direction: column;
+		gap: 2px;
 	}
 
-	.post-tag {
-		display: inline-block;
-		padding: var(--tag-padding-y) var(--spacing-2);
-		font-size: var(--font-size-xs);
-		color: var(--color-text-secondary);
-		background: var(--color-surface);
-		border-radius: var(--radius);
-		text-decoration: none;
-		transition:
-			color var(--transition-fast),
-			background var(--transition-fast);
+	.posts[data-view="list"] .post-link {
+		display: grid;
+		grid-template-columns: 128px 1fr;
+		gap: var(--spacing-3);
+		align-items: center;
+		padding: var(--spacing-2) 0;
 	}
 
-	.post-tag:hover {
-		color: var(--color-text);
-		background: var(--color-border);
+	.posts[data-view="list"] .post-title {
+		font-size: 0.9375rem;
 	}
 
-	@media (max-width: 600px) {
-		.posts-page {
-			padding: var(--spacing-6) var(--spacing-4) var(--spacing-12);
+	.posts[data-view="list"] .post-date {
+		margin-top: 5px;
+	}
+
+	.empty {
+		color: rgb(255 255 255 / 0.5);
+		font-size: 0.9375rem;
+	}
+
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	@media (hover: hover) {
+		.view-toggle button:hover {
+			color: #fff;
 		}
+	}
 
-		.page-title {
-			font-size: var(--font-size-3xl);
-		}
-
-		.post-title {
-			font-size: var(--font-size-xl);
+	@media (prefers-reduced-motion: reduce) {
+		.view-toggle button {
+			transition: none;
 		}
 	}
 </style>
+
+<script>
+	// View preference is per-visitor and cosmetic, so localStorage is the right
+	// home for it. Every access is guarded: private windows and blocked site
+	// data make these throw rather than return null.
+	const KEY = "posts-view";
+	const list = document.querySelector<HTMLElement>("[data-posts]");
+	const buttons = document.querySelectorAll<HTMLButtonElement>("[data-view]");
+
+	function read(): "grid" | "list" {
+		try {
+			return localStorage.getItem(KEY) === "list" ? "list" : "grid";
+		} catch {
+			return "grid";
+		}
+	}
+
+	function apply(view: "grid" | "list") {
+		if (list) {
+			if (view === "list") list.dataset.view = "list";
+			else delete list.dataset.view;
+		}
+		for (const button of buttons) {
+			button.setAttribute(
+				"aria-pressed",
+				String(button.dataset.view === view),
+			);
+		}
+	}
+
+	apply(read());
+
+	for (const button of buttons) {
+		button.addEventListener("click", () => {
+			const view = button.dataset.view === "list" ? "list" : "grid";
+			apply(view);
+			try {
+				localStorage.setItem(KEY, view);
+			} catch {
+				// Preference just won't persist; the toggle still works.
+			}
+		});
+	}
+</script>

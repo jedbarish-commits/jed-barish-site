@@ -128,6 +128,45 @@ const isLoggedIn = !!Astro.locals.user;
 </html>
 
 <style is:global>
+	/* Same layer order and base reset Base.astro establishes — without these
+	   the shell inherits no font-family and body falls back to Times. The
+	   emdash/ec- selectors are excluded so EmDash's own UI keeps its box model. */
+	@layer base;
+
+	@layer base {
+		*:where(:not([class*="emdash"]):not([class*="ec-"])),
+		*:where(:not([class*="emdash"]):not([class*="ec-"]))::before,
+		*:where(:not([class*="emdash"]):not([class*="ec-"]))::after {
+			box-sizing: border-box;
+		}
+
+		body,
+		h1,
+		h2,
+		h3,
+		h4,
+		h5,
+		h6,
+		p,
+		ul,
+		ol {
+			margin: 0;
+		}
+
+		ul,
+		ol {
+			padding: 0;
+		}
+
+		body {
+			font-family: var(--font-body);
+			font-size: var(--font-size-base);
+			line-height: var(--leading-relaxed);
+			-webkit-font-smoothing: antialiased;
+			-moz-osx-font-smoothing: grayscale;
+		}
+	}
+
 	:root {
 		/* Phone-frame width — the shell never grows past this, at any viewport. */
 		--app-width: 430px;
