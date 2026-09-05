@@ -1,0 +1,154 @@
+---
+import { getEmDashCollection } from "emdash";
+import { Image } from "emdash/ui";
+import MobileShell from "../layouts/MobileShell.astro";
+
+const { entries: milestones, cacheHint } = await getEmDashCollection("timeline", {
+	limit: 200,
+});
+
+if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
+
+// `year` is a string so it can hold a range ("2003") or a span ("1996–2003").
+// Sort on its leading digits, newest first, so ordering doesn't depend on
+// publish dates that mean nothing here.
+const sorted = [...milestones].sort((a, b) => {
+	const yearOf = (m: { data: { year?: string } }) =>
+		Number.parseInt(String(m.data.year ?? "").match(/\d{4}/)?.[0] ?? "0", 10);
+	return yearOf(b) - yearOf(a);
+});
+---
+
+<MobileShell title="About" description="Jed Barish — a timeline">
+	<div class="about">
+		<header class="intro">
+			<h1>Jed Barish</h1>
+			<slot />
+		</header>
+
+		{
+			sorted.length === 0 ? (
+				<p class="empty">No milestones yet.</p>
+			) : (
+				<ol class="timeline">
+					{sorted.map((m) => (
+						<li>
+							<span class="year">{m.data.year}</span>
+							<div class="entry">
+								{m.data.image && (
+									<span class="entry-image">
+										<Image image={m.data.image} loading="lazy" />
+									</span>
+								)}
+								<h2>{m.data.title}</h2>
+								{m.data.description && <p>{m.data.description}</p>}
+							</div>
+						</li>
+					))}
+				</ol>
+			)
+		}
+	</div>
+</MobileShell>
+
+<style>
+	.about {
+		padding: calc(env(safe-area-inset-top, 0px) + var(--spacing-6))
+			var(--spacing-5) 120px;
+	}
+
+	.intro h1 {
+		margin: 0 0 var(--spacing-6);
+		font-size: 1.75rem;
+		font-weight: 700;
+		letter-spacing: var(--tracking-tight);
+	}
+
+	.timeline {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.timeline li {
+		position: relative;
+		display: grid;
+		grid-template-columns: 52px 1fr;
+		gap: var(--spacing-3);
+		padding-bottom: var(--spacing-6);
+	}
+
+	/* The rail: a line down the year gutter, with a node per entry. */
+	.timeline li::before {
+		content: "";
+		position: absolute;
+		left: 5px;
+		top: 18px;
+		bottom: 0;
+		width: 1px;
+		background: rgb(255 255 255 / 0.14);
+	}
+
+	.timeline li:last-child::before {
+		display: none;
+	}
+
+	.timeline li::after {
+		content: "";
+		position: absolute;
+		left: 1px;
+		top: 6px;
+		width: 9px;
+		height: 9px;
+		border-radius: 50%;
+		background: var(--color-brand, #4d9fff);
+		box-shadow: 0 0 0 3px var(--app-bg, #0b0b0c);
+	}
+
+	.year {
+		grid-column: 1;
+		padding-left: 18px;
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: var(--tracking-wide);
+		color: rgb(255 255 255 / 0.5);
+		white-space: nowrap;
+	}
+
+	.entry {
+		grid-column: 2;
+		min-width: 0;
+	}
+
+	.entry h2 {
+		margin: 0;
+		font-size: 1rem;
+		font-weight: 600;
+		line-height: 1.3;
+	}
+
+	.entry p {
+		margin: 6px 0 0;
+		font-size: 0.875rem;
+		line-height: 1.55;
+		color: rgb(255 255 255 / 0.66);
+	}
+
+	.entry-image {
+		display: block;
+		margin-bottom: var(--spacing-2);
+		border-radius: 8px;
+		overflow: hidden;
+	}
+
+	.entry-image :global(img) {
+		width: 100%;
+		height: auto;
+		display: block;
+	}
+
+	.empty {
+		color: rgb(255 255 255 / 0.5);
+		font-size: 0.9375rem;
+	}
+</style>
