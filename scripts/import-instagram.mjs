@@ -363,6 +363,54 @@ async function fixDates() {
 	);
 }
 
+/** Lowercase, hyphenated, ASCII-ish — close enough to match EmDash's own. */
+function slugify(text) {
+	return String(text)
+		.normalize("NFKD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 80)
+		.replace(/-+$/, "");
+}
+
+/**
+ * Create a content entry, disambiguating a slug collision.
+ *
+ * EmDash derives the slug from the title, and a title here is the first line
+ * of an Instagram caption — the same caption reused across posts produces the
+ * same slug and the second create fails. The first attempt lets EmDash choose
+ * so most entries keep a clean slug; only a collision falls back to appending
+ * the Instagram media id, which is unique per item.
+ */
+async function createEntry(collection, data, sourceRef) {
+	const body = (slug) =>
+		JSON.stringify(slug ? { slug, data } : { data });
+	const post = (slug) =>
+		api(`/_emdash/api/content/${collection}`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: body(slug),
+		});
+
+	let res = await post();
+	if (res.ok) return res;
+
+	// Truncate the title part only — slicing the joined string could cut the
+	// suffix off and collide all over again. Carousels are the common case:
+	// every image in one inherits the post caption, so eleven images can share
+	// a title.
+	const unique = path.basename(sourceRef).replace(/\.[^.]+$/, "");
+	const stem = slugify(data.title).slice(0, 80).replace(/-+$/, "");
+	res = await post(`${stem}-${unique}`);
+	if (res.ok) return res;
+
+	throw new Error(
+		`create ${res.status}: ${JSON.stringify(res.body).slice(0, 200)}`,
+	);
+}
+
 /** Upload one local file into the media library, returning its media id. */
 async function uploadFile(absPath, alt) {
 	const bytes = await readFile(absPath);
@@ -443,20 +491,17 @@ async function importPhotos(root, items) {
 		const title = titleFrom(photo.caption, photo.takenAt);
 		try {
 			const mediaId = await uploadFile(abs, title);
-			const create = await api("/_emdash/api/content/photos", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					data: {
-						title,
-						caption: photo.caption || undefined,
-						image: mediaId,
-						source_ref: photo.uri,
-						taken_at: photo.takenAt?.toISOString(),
-					},
-				}),
-			});
-			if (!create.ok) throw new Error(`create ${create.status}: ${JSON.stringify(create.body).slice(0, 200)}`);
+			const create = await createEntry(
+				"photos",
+				{
+					title,
+					caption: photo.caption || undefined,
+					image: mediaId,
+					source_ref: photo.uri,
+					taken_at: photo.takenAt?.toISOString(),
+				},
+				photo.uri,
+			);
 			if (PUBLISH) {
 				const id = create.body?.data?.item?.id;
 				await api(`/_emdash/api/content/photos/${id}/publish`, {
@@ -506,21 +551,18 @@ async function importVideos(root, items) {
 				}
 			}
 
-			const create = await api("/_emdash/api/content/posts", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					data: {
-						title,
-						excerpt: video.caption || undefined,
-						video_file: videoId,
-						featured_image: posterId,
-						source_ref: video.uri,
-						taken_at: video.takenAt?.toISOString(),
-					},
-				}),
-			});
-			if (!create.ok) throw new Error(`create ${create.status}: ${JSON.stringify(create.body).slice(0, 200)}`);
+			const create = await createEntry(
+				"posts",
+				{
+					title,
+					excerpt: video.caption || undefined,
+					video_file: videoId,
+					featured_image: posterId,
+					source_ref: video.uri,
+					taken_at: video.takenAt?.toISOString(),
+				},
+				video.uri,
+			);
 			if (PUBLISH) {
 				const id = create.body?.data?.item?.id;
 				await api(`/_emdash/api/content/posts/${id}/publish`, {
