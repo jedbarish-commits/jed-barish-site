@@ -39,7 +39,9 @@ const feed: FeedItem[] = [
 	...photos.entries.map((entry) => ({ kind: "photo" as const, at: when(entry), entry })),
 ].sort((a, b) => b.at - a.at);
 
-// A file field stores either a direct src or an R2 storage key.
+// Video is served by our own endpoint, not EmDash's media route: that route
+// answers a byte-range request with a full-body 200, which breaks seeking and
+// stops iOS Safari playing at all.
 const fileSrc = (value: unknown): string | null => {
 	if (!value || typeof value !== "object") return null;
 	const f = value as Record<string, unknown>;
@@ -48,7 +50,7 @@ const fileSrc = (value: unknown): string | null => {
 	const key =
 		(typeof meta?.storageKey === "string" ? meta.storageKey : undefined) ||
 		(typeof f.id === "string" ? f.id : undefined);
-	return key ? `/_emdash/api/media/file/${key}` : null;
+	return key ? `/api/video/${key}` : null;
 };
 
 const formatDate = (value: Date | string | null | undefined) =>

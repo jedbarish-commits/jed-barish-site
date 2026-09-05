@@ -60,6 +60,16 @@ const tags = post.data.terms?.tag ?? [];
 // One video per page, so the iframe is rendered up front rather than behind a
 // facade — the visitor came here to watch it.
 const youtubeId = post.data.youtube_id ?? null;
+
+// Self-hosted video (an Instagram import) is served by our range-capable
+// endpoint; EmDash's media route ignores Range, which breaks seeking on
+// desktop and playback entirely on iOS.
+const videoFile = post.data.video_file as Record<string, unknown> | undefined;
+const videoKey =
+	(videoFile?.meta as Record<string, unknown> | undefined)?.storageKey ??
+	videoFile?.id;
+const videoSrc =
+	typeof videoKey === "string" ? `/api/video/${videoKey}` : null;
 const embedParams = new URLSearchParams({
 	playsinline: "1",
 	rel: "0",
@@ -103,7 +113,15 @@ const publishDate =
 
 		<div class="player">
 			{
-				youtubeId ? (
+				videoSrc ? (
+					<video
+						src={videoSrc}
+						controls
+						playsinline
+						preload="metadata"
+						poster={featuredImageUrl ?? undefined}
+					/>
+				) : youtubeId ? (
 					<iframe
 						src={`https://www.youtube-nocookie.com/embed/${youtubeId}?${embedParams}`}
 						title={post.data.title}
@@ -237,6 +255,7 @@ const publishDate =
 	}
 
 	.player :global(iframe),
+	.player :global(video),
 	.player :global(img) {
 		width: 100%;
 		height: 100%;
