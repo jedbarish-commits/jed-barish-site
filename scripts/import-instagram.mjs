@@ -32,7 +32,9 @@ const DRY_RUN = flag("dry-run");
 // Photos land as drafts unless --publish is passed. An Instagram back
 // catalogue is personal by default; nothing goes public without asking for it.
 const PUBLISH = flag("publish");
-const TOKEN = process.env.EMDASH_TOKEN;
+// Trim: pasting a token often drags in a trailing newline or a stray space,
+// which makes an otherwise valid token fail with an opaque 401.
+const TOKEN = process.env.EMDASH_TOKEN?.trim();
 
 if (!EXPORT_DIR) {
 	console.error("Missing --export <path to unzipped Instagram export>");
@@ -195,14 +197,57 @@ const api = async (pathname, init = {}) => {
 	return { ok: res.ok, status: res.status, body };
 };
 
+/**
+ * Check the token before doing any work. Without this a bad token surfaces as
+ * one 401 per photo, after the dedupe check has already silently returned an
+ * empty set — which looks like "nothing imported yet" rather than "not logged
+ * in", and then tries the whole export anyway.
+ */
+async function preflight() {
+	const { ok, status, body } = await api("/_emdash/api/content/photos?limit=1");
+	if (ok) return;
+
+	const detail =
+		typeof body === "object" ? (body?.error?.message ?? "") : String(body);
+	const lines = [`Auth check failed against ${SITE} (HTTP ${status}${detail ? `: ${detail}` : ""}).`, ""];
+
+	if (status === 401) {
+		lines.push(
+			"The token was rejected. Most likely one of:",
+			"  - It was created on a different site than " + SITE,
+			"    (a token made in a localhost admin will not work against production)",
+			"  - The paste was truncated — tokens start with `ec_pat_` and are long",
+			"  - It was revoked, or has expired",
+			"",
+			`Token seen by this script: ${
+				TOKEN ? `${TOKEN.slice(0, 7)}…${TOKEN.slice(-4)} (${TOKEN.length} chars)` : "(empty)"
+			}`,
+		);
+	} else if (status === 403) {
+		lines.push(
+			"The token authenticated but lacks the needed scopes. It needs:",
+			"  content:read, content:write, media:read, media:write",
+		);
+	}
+	console.error(lines.join("\n"));
+	process.exit(1);
+}
+
 async function alreadyImported() {
 	const seen = new Set();
 	let cursor;
 	do {
 		const qs = new URLSearchParams({ limit: "100" });
 		if (cursor) qs.set("cursor", cursor);
-		const { ok, body } = await api(`/_emdash/api/content/photos?${qs}`);
-		if (!ok) break;
+		const { ok, status, body } = await api(`/_emdash/api/content/photos?${qs}`);
+		// Never swallow this: an unreadable list means dedupe is blind, and
+		// continuing would re-import everything on the next run.
+		if (!ok) {
+			throw new Error(
+				`Could not list existing photos (HTTP ${status}). Aborting rather than ` +
+					"risk duplicate imports.",
+			);
+		}
 		for (const item of body?.data?.items ?? []) {
 			const ref = item?.data?.source_ref;
 			if (ref) seen.add(ref);
@@ -256,6 +301,8 @@ async function main() {
 		if (photos.length > 20) console.log(`  … and ${photos.length - 20} more`);
 		return;
 	}
+
+	await preflight();
 
 	const seen = await alreadyImported();
 	console.log(`${seen.size} already imported; skipping those.\n`);
