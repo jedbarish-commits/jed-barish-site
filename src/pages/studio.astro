@@ -217,6 +217,19 @@ const displayName = user.name || user.email;
 				<button type="button" class="btn" data-again>Post another</button>
 			</div>
 		</div>
+
+		<details class="tools">
+			<summary>Site tools</summary>
+			<div class="tools-body">
+				<p class="hint">
+					Search indexes videos and photos as they're saved. After a bulk import, or when
+					search comes up empty for something that's clearly there, rebuild it. Takes a
+					few seconds.
+				</p>
+				<button type="button" class="btn" data-reindex>Rebuild search index</button>
+				<p class="foot" data-reindex-status aria-live="polite"></p>
+			</div>
+		</details>
 	</div>
 </MobileShell>
 
@@ -596,6 +609,29 @@ const displayName = user.name || user.email;
 		margin: 0 0 var(--spacing-5);
 		color: rgb(255 255 255 / 0.66);
 		line-height: 1.5;
+	}
+
+	.tools {
+		margin-top: var(--spacing-10);
+		padding-top: var(--spacing-4);
+		border-top: 1px solid rgb(255 255 255 / 0.1);
+	}
+
+	.tools summary {
+		cursor: pointer;
+		font-size: 0.6875rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: var(--tracking-wider);
+		color: rgb(255 255 255 / 0.42);
+	}
+
+	.tools-body {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--spacing-3);
+		margin-top: var(--spacing-4);
 	}
 </style>
 
@@ -1272,6 +1308,47 @@ const displayName = user.name || user.email;
 			moreToggle.setAttribute("aria-expanded", String(open));
 			moreToggle.textContent = open ? "Fewer details" : "More details";
 		});
+		// Search maintenance. These are admin-permission calls, which the session
+		// carries — the same reason Studio needs no token of its own.
+		const reindex = q<HTMLButtonElement>("[data-reindex]");
+		const reindexStatus = q<HTMLElement>("[data-reindex-status]");
+		reindex.addEventListener("click", async () => {
+			reindex.disabled = true;
+			reindexStatus.classList.remove("error");
+			const post = (path: string, body: Record<string, unknown>) =>
+				api<{ indexed?: number }>(path, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(body),
+				});
+			const lines: string[] = [];
+			try {
+				for (const [collection, label] of [
+					["posts", "Videos"],
+					["photos", "Photos"],
+				] as const) {
+					reindexStatus.textContent = `Indexing ${label.toLowerCase()}…`;
+					let result: { indexed?: number };
+					try {
+						result = await post("/_emdash/api/search/rebuild", { collection });
+					} catch (error) {
+						// First time for a collection: the index has to exist before it
+						// can be rebuilt. Enabling creates and fills it.
+						if (!/not enabled/i.test((error as Error).message)) throw error;
+						await post("/_emdash/api/search/enable", { collection, enabled: true });
+						result = await post("/_emdash/api/search/rebuild", { collection });
+					}
+					lines.push(`${label}: ${result.indexed ?? 0} indexed`);
+				}
+				reindexStatus.textContent = lines.join(" · ");
+			} catch (error) {
+				reindexStatus.textContent = `Couldn't rebuild: ${(error as Error).message}`;
+				reindexStatus.classList.add("error");
+			} finally {
+				reindex.disabled = false;
+			}
+		});
+
 		q<HTMLButtonElement>("[data-signout]").addEventListener("click", async () => {
 			await api("/_emdash/api/auth/logout", { method: "POST" }).catch(() => {});
 			window.location.href = "/";
