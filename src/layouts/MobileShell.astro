@@ -111,6 +111,17 @@ const isLoggedIn = !!Astro.locals.user;
 		<title>{fullTitle}</title>
 		<EmDashHead page={pageCtx} />
 		<script is:inline>
+			// iOS also zooms on focus regardless of font size in some cases;
+			// maximum-scale=1 stops that there while pinch zoom stays available
+			// (Safari has ignored it for pinch since iOS 10). Android Chrome would
+			// honour it and lock pinch zoom, so iOS only.
+			(function () {
+				var ios =
+					/iPhone|iPad|iPod/.test(navigator.userAgent) ||
+					(navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+				var meta = document.querySelector('meta[name="viewport"]');
+				if (ios && meta) meta.setAttribute("content", meta.getAttribute("content") + ", maximum-scale=1");
+			})();
 			(function () {
 				var c = document.cookie;
 				var i = c.indexOf("theme=");
@@ -181,6 +192,13 @@ const isLoggedIn = !!Astro.locals.user;
 			line-height: var(--leading-relaxed);
 			-webkit-font-smoothing: antialiased;
 			-moz-osx-font-smoothing: grayscale;
+		}
+
+		/* Below 16px iOS zooms the page when a field takes focus. */
+		input,
+		select,
+		textarea {
+			font-size: max(1rem, 16px);
 		}
 	}
 

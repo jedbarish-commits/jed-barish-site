@@ -1,20 +1,51 @@
 ---
 export const prerender = false;
 
-import { search } from "emdash";
+import type { ImageValue } from "emdash";
+import { getEmDashEntry, search } from "emdash";
+import { Image } from "emdash/ui";
 import MobileShell from "../layouts/MobileShell.astro";
+import { titleEchoesCaption } from "../utils/text";
 
 const query = Astro.url.searchParams.get("q")?.trim() || "";
 
-// FTS-backed search rather than loading every post and filtering in JS.
-const { items: results } = query
-	? await search(query, { collections: ["posts"], limit: 30 })
+// FTS-backed search across both collections rather than loading everything
+// and filtering in JS. Videos index title, body and transcript; photos index
+// title, caption and location.
+const { items: hits } = query
+	? await search(query, { collections: ["posts", "photos"], limit: 30 })
 	: { items: [] };
+
+// Search hits carry no images, so each entry is fetched for its thumbnail.
+const results = await Promise.all(
+	hits.map(async (hit) => {
+		const key = hit.slug ?? hit.id;
+		const isPhoto = hit.collection === "photos";
+		const { entry } = isPhoto
+			? await getEmDashEntry("photos", key)
+			: await getEmDashEntry("posts", key);
+		const data = (entry?.data ?? {}) as Record<string, unknown>;
+		const image = (isPhoto ? data.image : data.featured_image) as ImageValue | undefined;
+
+		// Imported items have a title that is just the caption's first line; when
+		// the snippet already opens with it, the snippet alone says everything.
+		const snippetText = (hit.snippet ?? "").replace(/<[^>]+>/g, "");
+		const echo = !!hit.snippet && titleEchoesCaption(hit.title, snippetText);
+
+		return {
+			...hit,
+			href: isPhoto ? `/photos?p=${key}` : `/videos/${key}`,
+			kind: isPhoto ? "Photo" : "Video",
+			image,
+			echo,
+		};
+	}),
+);
 ---
 
 <MobileShell
 	title={query ? `Search: ${query}` : "Search"}
-	description="Search videos"
+	description="Search videos and photos"
 >
 	<section class="search-page">
 		<h1>Search</h1>
@@ -28,7 +59,7 @@ const { items: results } = query
 				type="search"
 				name="q"
 				value={query}
-				placeholder="Search videos…"
+				placeholder="Search videos and photos…"
 				enterkeyhint="search"
 				autocomplete="off"
 			/>
@@ -47,13 +78,21 @@ const { items: results } = query
 		{
 			results.length > 0 && (
 				<ol class="results">
-					{results.map((result) => (
+					{results.map((r) => (
 						<li>
-							<a href={`/videos/${result.slug ?? result.id}`}>
-								<span class="result-title">{result.title ?? "Untitled"}</span>
-								{result.snippet && (
-									<span class="result-snippet" set:html={result.snippet} />
-								)}
+							<a href={r.href} class="result">
+								<span class="thumb">
+									{r.image ? <Image image={r.image} loading="lazy" /> : <span class="thumb-empty" />}
+								</span>
+								<span class="body">
+									<span class="kind">{r.kind}</span>
+									{!r.echo && <span class="result-title">{r.title ?? "Untitled"}</span>}
+									{r.snippet ? (
+										<span class:list={["result-snippet", { lead: r.echo }]} set:html={r.snippet} />
+									) : (
+										r.echo && <span class="result-title">{r.title}</span>
+									)}
+								</span>
 							</a>
 						</li>
 					))}
@@ -61,7 +100,7 @@ const { items: results } = query
 			)
 		}
 
-		{!query && <p class="hint">Search across every video on the site.</p>}
+		{!query && <p class="hint">Search across every video and photo on the site.</p>}
 	</section>
 </MobileShell>
 
@@ -131,32 +170,73 @@ const { items: results } = query
 		flex-direction: column;
 	}
 
-	.results a {
-		display: block;
-		padding: var(--spacing-4) 0;
+	.result {
+		display: grid;
+		grid-template-columns: 88px 1fr;
+		gap: var(--spacing-3);
+		align-items: center;
+		padding: var(--spacing-3) 0;
 		border-bottom: 1px solid rgb(255 255 255 / 0.08);
 		text-decoration: none;
 		color: inherit;
 	}
 
-	.result-title {
+	.thumb {
 		display: block;
+		aspect-ratio: 1;
+		border-radius: 10px;
+		overflow: hidden;
+		background: #17171a;
+	}
+
+	.thumb :global(img),
+	.thumb-empty {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	.body {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		min-width: 0;
+	}
+
+	.kind {
+		font-size: 0.6875rem;
+		font-weight: 600;
+		letter-spacing: var(--tracking-wider);
+		text-transform: uppercase;
+		color: rgb(255 255 255 / 0.4);
+	}
+
+	.result-title {
 		font-size: 0.9375rem;
 		font-weight: 600;
 		line-height: 1.3;
 	}
 
 	.result-snippet {
-		display: block;
-		margin-top: 4px;
 		font-size: 0.8125rem;
-		line-height: 1.5;
+		line-height: 1.45;
 		color: rgb(255 255 255 / 0.55);
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	/* Standing in for the title, so it carries the weight instead. */
+	.result-snippet.lead {
+		font-size: 0.9375rem;
+		color: rgb(255 255 255 / 0.9);
 	}
 
 	.result-snippet :global(mark) {
 		background: none;
 		color: #fff;
-		font-weight: 600;
+		font-weight: 700;
 	}
 </style>
