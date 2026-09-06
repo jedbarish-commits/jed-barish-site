@@ -106,11 +106,13 @@ const publishDate =
 	content={{ collection: "posts", id: post.data.id, slug }}
 >
 	<article class="article">
-		<a href="/" class="back" aria-label="Back to feed">
+		<!-- Videos is this page's home; the script below sends the pill back to
+		     wherever the visitor actually came from (feed, search, a tag). -->
+		<a href="/videos" class="back" data-back>
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 				<path d="M15 5l-7 7 7 7"></path>
 			</svg>
-			<span>Feed</span>
+			<span data-back-label>Videos</span>
 		</a>
 
 		<div class="player">
@@ -469,3 +471,39 @@ const publishDate =
 	}
 
 </style>
+
+<script>
+	// The pill returns to the section the visitor came from. Same-origin
+	// referrers only; anything else keeps the default, Videos.
+	const back = document.querySelector<HTMLAnchorElement>("[data-back]");
+	const label = back?.querySelector<HTMLElement>("[data-back-label]");
+	if (back && label && document.referrer) {
+		let from: URL | null = null;
+		try {
+			from = new URL(document.referrer);
+		} catch {
+			from = null;
+		}
+		if (from && from.origin === location.origin && from.pathname !== location.pathname) {
+			const path = from.pathname;
+			const name =
+				path === "/" ? "Home"
+				: path.startsWith("/videos") ? "Videos"
+				: path.startsWith("/search") ? "Search"
+				: path.startsWith("/tag/") || path.startsWith("/category/") ? "Back"
+				: null;
+			if (name) {
+				label.textContent = name;
+				back.href = from.pathname + from.search;
+				// history.back() lands on the exact spot — the feed panel or the
+				// page of the grid — rather than the top of the section.
+				back.addEventListener("click", (event) => {
+					if (history.length > 1) {
+						event.preventDefault();
+						history.back();
+					}
+				});
+			}
+		}
+	}
+</script>
