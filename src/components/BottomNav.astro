@@ -93,6 +93,16 @@ function isActive(href: string) {
 		pointer-events: none;
 	}
 
+	/* From 640px the feed sits in a phone-shaped frame inset from the viewport
+	   (see MobileShell). Pin the nav to that frame, not the viewport, so it
+	   and the panels agree on where the bottom is. */
+	@media (min-width: 640px) {
+		:global(html.is-full-bleed) .bottom-nav {
+			position: absolute;
+			bottom: var(--nav-gap);
+		}
+	}
+
 	.nav-pill {
 		pointer-events: auto;
 		display: flex;

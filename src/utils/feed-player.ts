@@ -285,15 +285,33 @@ class Player {
 	}
 
 	fullscreen() {
-		const el = this.el;
-		// iPhone has no element fullscreen; the native player is the way in,
-		// and it rotates to landscape.
-		const native = el as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
-		if (el instanceof HTMLVideoElement && !document.fullscreenEnabled && native?.webkitEnterFullscreen) {
-			native.webkitEnterFullscreen();
+		type Prefixed = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
+		type NativeVideo = HTMLVideoElement & { webkitEnterFullscreen?: () => void };
+		const box = this.box as Prefixed;
+		const video = this.el instanceof HTMLVideoElement ? (this.el as NativeVideo) : null;
+
+		// iPhone has no element fullscreen at all; the native player is the way
+		// in, and it rotates to landscape.
+		const native = () => {
+			if (video?.webkitEnterFullscreen) video.webkitEnterFullscreen();
+			else if (this.el instanceof HTMLIFrameElement) this.el.requestFullscreen?.().catch(() => {});
+		};
+
+		// Everywhere else, fullscreen the box rather than the video so the
+		// poster, ring and play glyph come along.
+		const request = box.requestFullscreen?.bind(box) ?? box.webkitRequestFullscreen?.bind(box);
+		if (!request) {
+			native();
 			return;
 		}
-		(el ?? this.box).requestFullscreen?.().catch(() => {});
+		try {
+			const result = request();
+			if (result && typeof (result as Promise<void>).catch === "function") {
+				(result as Promise<void>).catch(native);
+			}
+		} catch {
+			native();
+		}
 	}
 
 	/** Derive the overlays from state. */
