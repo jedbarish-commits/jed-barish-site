@@ -105,6 +105,8 @@ export function youtubeEmbedUrl(id: string, extra: Record<string, string> = {}):
 		modestbranding: "1",
 		// Captions on by default.
 		cc_load_policy: "1",
+		// Lets the page talk to the player over postMessage (mute, pause).
+		enablejsapi: "1",
 		...extra,
 	});
 	return `https://www.youtube-nocookie.com/embed/${id}?${params}`;

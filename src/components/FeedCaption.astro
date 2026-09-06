@@ -1,0 +1,202 @@
+---
+import { linkify } from "../utils/linkify";
+
+/**
+ * The text block under a feed panel: kicker, title, a two-line caption with
+ * "more…", and an optional link button. The full text lives in a <template>
+ * that CaptionSheet lifts into a bottom sheet when "more…" is tapped.
+ *
+ * "more…" is only shown when the caption actually overflows two lines. That
+ * can't be known from character count — it depends on the viewport, the
+ * reader's text size and the words themselves — so it's measured, and
+ * re-measured whenever the block changes size (a ResizeObserver also fires
+ * when a hidden viewer becomes visible).
+ */
+interface Props {
+	kicker?: string | null;
+	title: string;
+	href?: string | null;
+	caption?: string | null;
+	/** False when the title is just the caption's first line — show the caption alone. */
+	showTitle?: boolean;
+	ctaUrl?: string | null;
+	ctaLabel?: string | null;
+}
+
+const { kicker, title, href, caption, showTitle = true, ctaUrl, ctaLabel } = Astro.props;
+
+// Only web links become buttons; anything else stays text.
+const cta = ctaUrl && /^https?:\/\//i.test(ctaUrl) ? ctaUrl : null;
+const segments = caption ? linkify(caption) : [];
+---
+
+<div class="cap" data-caption>
+	{kicker && <p class="cap-kicker">{kicker}</p>}
+	{
+		showTitle && (
+			<h2 class="cap-title">{href ? <a href={href}>{title}</a> : title}</h2>
+		)
+	}
+	{
+		caption && (
+			<div class:list={["cap-body", { lead: !showTitle }]}>
+				<p class="cap-text" data-clamp>
+					{caption}
+				</p>
+				<button type="button" class="cap-more" data-more hidden>
+					more…
+				</button>
+			</div>
+		)
+	}
+	{
+		cta && (
+			<a class="cap-cta" href={cta} target="_blank" rel="noopener noreferrer">
+				{ctaLabel || "Learn more"}
+				<span aria-hidden="true">↗</span>
+			</a>
+		)
+	}
+
+	<template data-sheet>
+		{kicker && <p class="sheet-kicker">{kicker}</p>}
+		<h2 class="sheet-title">{href ? <a href={href}>{title}</a> : title}</h2>
+		{
+			caption && (
+				<p class="sheet-text">
+					{segments.map((s) =>
+						s.href ? (
+							<a href={s.href} target="_blank" rel="noopener noreferrer">
+								{s.text}
+							</a>
+						) : (
+							s.text
+						),
+					)}
+				</p>
+			)
+		}
+		{
+			cta && (
+				<a class="sheet-cta" href={cta} target="_blank" rel="noopener noreferrer">
+					{ctaLabel || "Learn more"}
+					<span aria-hidden="true">↗</span>
+				</a>
+			)
+		}
+	</template>
+</div>
+
+<style>
+	.cap {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	.cap-kicker {
+		margin: 0;
+		font-size: 0.6875rem;
+		font-weight: 600;
+		letter-spacing: var(--tracking-wider);
+		text-transform: uppercase;
+		color: rgb(255 255 255 / 0.5);
+	}
+
+	.cap-title {
+		margin: 0;
+		font-size: 1.25rem;
+		line-height: 1.25;
+		font-weight: 700;
+		letter-spacing: var(--tracking-tight);
+		color: #fff;
+	}
+
+	.cap-title a {
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.cap-body {
+		position: relative;
+	}
+
+	.cap-text {
+		margin: 0;
+		font-size: 0.9375rem;
+		line-height: 1.45;
+		color: rgb(255 255 255 / 0.8);
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		/* Captions carry their own line breaks; keep them, collapse runs. */
+		white-space: pre-line;
+	}
+
+	/* Standing in for the title, so it carries the weight instead. */
+	.lead .cap-text {
+		font-size: 1rem;
+		color: rgb(255 255 255 / 0.92);
+	}
+
+	/* Sits over the end of line two, fading the clipped words out behind it —
+	   line-clamp leaves nowhere for an inline "more" to go. */
+	.cap-more {
+		position: absolute;
+		right: 0;
+		bottom: 0;
+		padding: 0 0 0 44px;
+		border: 0;
+		background: linear-gradient(to right, transparent, var(--app-bg, #0b0b0c) 40%);
+		color: #fff;
+		font: inherit;
+		font-size: 0.9375rem;
+		line-height: 1.45;
+		font-weight: 600;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.cap-cta {
+		align-self: flex-start;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 6px;
+		padding: 10px 18px;
+		border-radius: 999px;
+		background: #fff;
+		color: #111;
+		font-size: 0.875rem;
+		font-weight: 600;
+		text-decoration: none;
+	}
+</style>
+
+<script>
+	// Show "more…" only when the caption overflows its two lines.
+	const check = (p: HTMLElement) => {
+		const more = p.parentElement?.querySelector<HTMLElement>("[data-more]");
+		if (!more) return;
+		// Hidden (a closed viewer) measures as 0×0; leave it for the next pass.
+		if (p.clientHeight === 0) return;
+		more.hidden = p.scrollHeight <= p.clientHeight + 1;
+	};
+
+	const ro = new ResizeObserver((entries) => {
+		for (const entry of entries) check(entry.target as HTMLElement);
+	});
+
+	for (const p of document.querySelectorAll<HTMLElement>("[data-clamp]")) {
+		ro.observe(p);
+		check(p);
+	}
+
+	// The first measurement can run before the webfont loads and come out a
+	// line short; measure again once it's in.
+	document.fonts?.ready.then(() => {
+		for (const p of document.querySelectorAll<HTMLElement>("[data-clamp]")) check(p);
+	});
+</script>

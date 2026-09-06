@@ -3,6 +3,7 @@ import { getEmDashCollection, getSiteSettings } from "emdash";
 import MobileShell from "../layouts/MobileShell.astro";
 import VideoPanel from "../components/VideoPanel.astro";
 import PhotoPanel from "../components/PhotoPanel.astro";
+import CaptionSheet from "../components/CaptionSheet.astro";
 import { resolveBlogSiteIdentity } from "../utils/site-identity";
 
 // The feed is everything, newest first — videos and photos interleaved. They
@@ -87,6 +88,7 @@ const formatDate = (value: Date | string | null | undefined) =>
 							featuredImage={item.entry.data.featured_image}
 							excerpt={item.entry.data.excerpt}
 							href={`/videos/${item.entry.id}`}
+							shareUrl={`${Astro.url.origin}/videos/${item.entry.id}`}
 							date={formatDate(item.entry.data.publishedAt)}
 							contentId={item.entry.data.id}
 							index={i}
@@ -100,6 +102,7 @@ const formatDate = (value: Date | string | null | undefined) =>
 							date={formatDate(
 								item.entry.data.taken_at ?? item.entry.data.publishedAt,
 							)}
+							shareUrl={`${Astro.url.origin}/photos?p=${item.entry.id}`}
 							contentId={item.entry.data.id}
 							index={i}
 						/>
@@ -108,6 +111,7 @@ const formatDate = (value: Date | string | null | undefined) =>
 			</div>
 		)
 	}
+	<CaptionSheet />
 </MobileShell>
 
 <style>
@@ -162,83 +166,11 @@ const formatDate = (value: Date | string | null | undefined) =>
 
 <script>
 	import { bindSnapKeys } from "../utils/snap-keys";
-	import { vimeoEmbedUrl, youtubeEmbedUrl } from "../utils/video-links";
+	import { mountFeed } from "../utils/feed-player";
 
-	// Facade player: the YouTube iframe is only created on tap, and torn back
-	// down once its panel scrolls out of view so audio never trails behind the
-	// visible video. Photo panels have no player and are simply ignored.
 	const feed = document.querySelector<HTMLElement>("[data-feed]");
-
 	if (feed) {
-		const teardown = new Map<Element, () => void>();
-
-		function activate(player: HTMLElement) {
-			if (player.querySelector("iframe, video")) return;
-			const videoId = player.dataset.videoId;
-			const vimeo = player.dataset.vimeo;
-			const videoSrc = player.dataset.videoSrc;
-			if (!videoId && !vimeo && !videoSrc) return;
-
-			const trigger = player.querySelector<HTMLElement>("[data-play]");
-			let element: HTMLElement;
-
-			if (videoSrc) {
-				// Self-hosted (an Instagram import): a plain video element, muted so
-				// autoplay is allowed, with controls so sound can be turned on.
-				const video = document.createElement("video");
-				video.src = videoSrc;
-				video.controls = true;
-				video.autoplay = true;
-				video.muted = true;
-				video.playsInline = true;
-				video.preload = "auto";
-				element = video;
-			} else {
-				// Hosted embeds, captions on by default for both providers.
-				const iframe = document.createElement("iframe");
-				iframe.src = vimeo
-					? vimeoEmbedUrl(vimeo, { autoplay: "1" })
-					: youtubeEmbedUrl(videoId!, { autoplay: "1" });
-				iframe.title = player.dataset.title ?? "Video";
-				iframe.allow =
-					"accelerometer; autoplay; encrypted-media; fullscreen; gyroscope; picture-in-picture; web-share";
-				iframe.allowFullscreen = true;
-				element = iframe;
-			}
-
-			trigger?.remove();
-			player.appendChild(element);
-
-			teardown.set(player, () => {
-				if (element instanceof HTMLVideoElement) element.pause();
-				element.remove();
-				if (trigger) player.appendChild(trigger);
-				teardown.delete(player);
-			});
-		}
-
-		feed.addEventListener("click", (event) => {
-			const trigger = (event.target as HTMLElement).closest("[data-play]");
-			if (!trigger) return;
-			const player = trigger.closest<HTMLElement>("[data-player]");
-			if (player) activate(player);
-		});
-
-		// Unload a player once its panel is mostly off-screen.
-		const observer = new IntersectionObserver(
-			(entries) => {
-				for (const entry of entries) {
-					if (entry.isIntersecting) continue;
-					teardown.get(entry.target)?.();
-				}
-			},
-			{ root: feed, threshold: 0.4 },
-		);
-
-		for (const player of feed.querySelectorAll("[data-player]")) {
-			observer.observe(player);
-		}
-
+		mountFeed(feed);
 		bindSnapKeys(feed, ".panel");
 	}
 </script>

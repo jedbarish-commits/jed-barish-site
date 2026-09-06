@@ -1,0 +1,199 @@
+---
+/**
+ * One bottom sheet per page, filled from whichever FeedCaption's "more…" was
+ * tapped. It announces itself with `sheet:open` / `sheet:close` events on the
+ * document so the feed can pause the video underneath and resume afterwards.
+ */
+---
+
+<div class="sheet-root" data-sheet-root hidden>
+	<div class="sheet-scrim" data-sheet-close></div>
+	<div class="sheet" role="dialog" aria-modal="true" aria-label="Details" tabindex="-1" data-sheet>
+		<div class="sheet-handle" aria-hidden="true"></div>
+		<button type="button" class="sheet-close" data-sheet-close aria-label="Close">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+				<path d="M6 6l12 12M18 6L6 18"></path>
+			</svg>
+		</button>
+		<div class="sheet-content" data-sheet-content></div>
+	</div>
+</div>
+
+<style is:global>
+	.sheet-root {
+		position: fixed;
+		inset: 0;
+		z-index: 90;
+	}
+
+	.sheet-root[hidden] {
+		display: none;
+	}
+
+	.sheet-scrim {
+		position: absolute;
+		inset: 0;
+		background: rgb(0 0 0 / 0.55);
+	}
+
+	.sheet {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		max-height: 82dvh;
+		margin-inline: auto;
+		max-width: var(--app-width, 430px);
+		padding: 10px 20px calc(env(safe-area-inset-bottom, 0px) + 24px);
+		border-radius: 22px 22px 0 0;
+		background: #151517;
+		color: #fff;
+		box-shadow: 0 -12px 40px rgb(0 0 0 / 0.5);
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		animation: sheet-up 220ms ease-out;
+	}
+
+	@keyframes sheet-up {
+		from {
+			transform: translateY(24px);
+			opacity: 0;
+		}
+	}
+
+	.sheet-handle {
+		width: 44px;
+		height: 4px;
+		margin: 0 auto 14px;
+		border-radius: 2px;
+		background: rgb(255 255 255 / 0.28);
+	}
+
+	.sheet-close {
+		position: absolute;
+		top: 24px;
+		right: 16px;
+		width: 38px;
+		height: 38px;
+		display: grid;
+		place-items: center;
+		border: 0;
+		border-radius: 50%;
+		background: rgb(255 255 255 / 0.12);
+		color: #fff;
+		cursor: pointer;
+	}
+
+	.sheet-close svg {
+		width: 18px;
+		height: 18px;
+	}
+
+	.sheet-content {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		padding-right: 48px;
+	}
+
+	.sheet-kicker {
+		margin: 0;
+		font-size: 0.6875rem;
+		font-weight: 600;
+		letter-spacing: var(--tracking-wider);
+		text-transform: uppercase;
+		color: rgb(255 255 255 / 0.5);
+	}
+
+	.sheet-title {
+		margin: 0;
+		font-size: 1.375rem;
+		line-height: 1.2;
+		font-weight: 700;
+		letter-spacing: var(--tracking-tight);
+	}
+
+	.sheet-title a {
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.sheet-text {
+		margin: 4px 0 0;
+		font-size: 1rem;
+		line-height: 1.55;
+		color: rgb(255 255 255 / 0.86);
+		white-space: pre-line;
+		overflow-wrap: anywhere;
+	}
+
+	.sheet-text a {
+		color: #fff;
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	.sheet-cta {
+		align-self: flex-start;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 10px;
+		padding: 12px 20px;
+		border-radius: 999px;
+		background: #fff;
+		color: #111;
+		font-size: 0.9375rem;
+		font-weight: 600;
+		text-decoration: none;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.sheet {
+			animation: none;
+		}
+	}
+</style>
+
+<script>
+	const root = document.querySelector<HTMLElement>("[data-sheet-root]");
+	const sheet = root?.querySelector<HTMLElement>("[data-sheet]");
+	const content = root?.querySelector<HTMLElement>("[data-sheet-content]");
+
+	if (root && sheet && content) {
+		let opener: HTMLElement | null = null;
+
+		const open = (from: HTMLElement) => {
+			const template = from.closest("[data-caption]")?.querySelector<HTMLTemplateElement>("template[data-sheet]");
+			if (!template) return;
+			content.replaceChildren(template.content.cloneNode(true));
+			opener = from;
+			root.hidden = false;
+			sheet.scrollTop = 0;
+			sheet.focus({ preventScroll: true });
+			document.dispatchEvent(new CustomEvent("sheet:open"));
+		};
+
+		const close = () => {
+			if (root.hidden) return;
+			root.hidden = true;
+			document.dispatchEvent(new CustomEvent("sheet:close"));
+			opener?.focus({ preventScroll: true });
+			opener = null;
+		};
+
+		document.addEventListener("click", (event) => {
+			const target = event.target as HTMLElement;
+			const more = target.closest<HTMLElement>("[data-more]");
+			if (more) {
+				open(more);
+				return;
+			}
+			if (target.closest("[data-sheet-close]")) close();
+		});
+
+		document.addEventListener("keydown", (event) => {
+			if (event.key === "Escape") close();
+		});
+	}
+</script>

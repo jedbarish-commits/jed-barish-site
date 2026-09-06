@@ -1,14 +1,14 @@
 ---
 import type { ImageValue } from "emdash";
 import { Image } from "emdash/ui";
-import Reactions from "./Reactions.astro";
+import ActionRail from "./ActionRail.astro";
+import FeedCaption from "./FeedCaption.astro";
 import { titleEchoesCaption } from "../utils/text";
 
 /**
- * One full-viewport photo panel in the swipe feed, sized to sit alongside
- * VideoPanel. Photos have no fixed aspect ratio the way a 16:9 embed does, so
- * the image is capped by height and centred rather than cropped — a portrait
- * shot shouldn't be chopped to a landscape box.
+ * One full-viewport photo panel in the swipe feed, laid out exactly like
+ * VideoPanel so the two read as one feed. The box takes the photo's own
+ * aspect ratio — a portrait shot isn't chopped to a landscape frame.
  */
 interface Props {
 	title: string;
@@ -16,34 +16,37 @@ interface Props {
 	caption?: string | null;
 	location?: string | null;
 	date?: string | null;
+	shareUrl: string;
 	index: number;
-	/** Omit to hide the reaction bar. */
-	contentId?: string;
+	contentId: string;
 }
 
-const { title, image, caption, location, date, index, contentId } = Astro.props;
+const { title, image, caption, location, date, shareUrl, index, contentId } = Astro.props;
 
-// The title is usually just the caption's first line, clipped. Showing both
-// prints the same sentence twice, so prefer the caption's full text.
+const ratio = image?.width && image?.height ? image.width / image.height : 1;
+// The title is usually just the caption's first line, clipped; show the
+// caption's full text instead of both.
 const showTitle = !titleEchoesCaption(title, caption);
+const kicker = [location, date].filter(Boolean).join(" · ");
 ---
 
-<section class="panel" aria-label={title}>
-	<div class="panel-inner">
-		<div class="frame">
-			<Image image={image} loading={index < 2 ? "eager" : "lazy"} />
+<section class="panel" data-panel aria-label={title}>
+	<div class="media">
+		<div class="box" style={`--arn:${ratio.toFixed(4)}`}>
+			<Image image={image} class="photo" loading={index < 2 ? "eager" : "lazy"} />
 		</div>
+		<ActionRail collection="photos" contentId={contentId} shareUrl={shareUrl} shareTitle={title} />
+		{
+			index === 0 && (
+				<p class="swipe-hint" data-swipe-hint>
+					Swipe up for more ↑
+				</p>
+			)
+		}
+	</div>
 
-		<div class="meta">
-			{showTitle && <h2 class="title">{title}</h2>}
-			{caption ? <p class:list={["caption", { lead: !showTitle }]}>{caption}</p> : null}
-			{contentId && <Reactions collection="photos" contentId={contentId} compact />}
-			<p class="sub">
-				{location && <span class="location">{location}</span>}
-				{location && date && <span class="dot" aria-hidden="true"></span>}
-				{date && <span>{date}</span>}
-			</p>
-		</div>
+	<div class="text">
+		<FeedCaption kicker={kicker || null} title={title} caption={caption} showTitle={showTitle} />
 	</div>
 </section>
 
@@ -52,84 +55,70 @@ const showTitle = !titleEchoesCaption(title, caption);
 		height: 100%;
 		scroll-snap-align: start;
 		scroll-snap-stop: always;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: calc(env(safe-area-inset-top, 0px) + var(--spacing-6))
-			var(--spacing-5) 104px;
+		display: grid;
+		grid-template-rows: minmax(0, 1fr) auto;
+		padding-top: env(safe-area-inset-top, 0px);
 		box-sizing: border-box;
 	}
 
-	.panel-inner {
-		width: 100%;
-		display: flex;
-		flex-direction: column;
-		gap: var(--spacing-5);
+	.media {
+		position: relative;
 		min-height: 0;
-	}
-
-	.frame {
-		border-radius: 14px;
-		overflow: hidden;
-		background: #000;
-		box-shadow: 0 8px 28px -10px rgb(0 0 0 / 0.7);
 		display: flex;
+		align-items: center;
 		justify-content: center;
-		min-height: 0;
+		padding: 8px 0;
+		container-type: size;
 	}
 
-	.frame :global(img) {
-		max-width: 100%;
-		max-height: 62dvh;
-		width: auto;
-		height: auto;
+	.box {
+		position: relative;
+		width: min(100%, calc(100cqh * var(--arn)));
+		aspect-ratio: var(--arn);
+		background: #000;
+		border-radius: 12px;
+		overflow: hidden;
+	}
+
+	.box :global(.photo) {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
 		object-fit: contain;
 		display: block;
 	}
 
-	.meta {
-		display: flex;
-		flex-direction: column;
-		gap: var(--spacing-2);
-	}
-
-	.title {
-		font-size: 1.25rem;
-		line-height: 1.25;
-		font-weight: 600;
-		letter-spacing: var(--tracking-tight);
+	.swipe-hint {
+		position: absolute;
+		top: 16px;
+		left: 50%;
+		z-index: 3;
+		transform: translateX(-50%);
 		margin: 0;
+		padding: 7px 14px;
+		border-radius: 999px;
+		background: rgb(255 255 255 / 0.16);
 		color: #fff;
+		font-size: 0.8125rem;
+		white-space: nowrap;
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+		transition: opacity 300ms;
 	}
 
-	.caption {
-		margin: 0;
-		font-size: 0.9375rem;
-		line-height: 1.5;
-		color: rgb(255 255 255 / 0.66);
+	.swipe-hint.is-gone {
+		opacity: 0;
+		pointer-events: none;
 	}
 
-	/* Standing in for the title, so it carries the weight instead. */
-	.caption.lead {
-		font-size: 1rem;
-		color: rgb(255 255 255 / 0.86);
+	.text {
+		padding: 12px var(--spacing-5) calc(env(safe-area-inset-bottom, 0px) + 96px);
 	}
 
-	.sub {
-		display: flex;
-		align-items: center;
-		gap: var(--spacing-2);
-		margin: 0;
-		font-size: 0.75rem;
-		letter-spacing: var(--tracking-wide);
-		text-transform: uppercase;
-		color: rgb(255 255 255 / 0.4);
-	}
-
-	.dot {
-		width: 3px;
-		height: 3px;
-		border-radius: 50%;
-		background: currentColor;
+	@media (prefers-reduced-motion: reduce) {
+		.swipe-hint {
+			transition: none;
+		}
 	}
 </style>

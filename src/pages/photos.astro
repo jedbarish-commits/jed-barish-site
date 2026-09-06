@@ -2,10 +2,16 @@
 import { getEmDashCollection } from "emdash";
 import { Image } from "emdash/ui";
 import MobileShell from "../layouts/MobileShell.astro";
+import ActionRail from "../components/ActionRail.astro";
+import CaptionSheet from "../components/CaptionSheet.astro";
+import FeedCaption from "../components/FeedCaption.astro";
 import { titleEchoesCaption } from "../utils/text";
 
 const PER_PAGE = 48;
-const page = Math.max(1, Number(Astro.url.searchParams.get("page") ?? "1") || 1);
+let page = Math.max(1, Number(Astro.url.searchParams.get("page") ?? "1") || 1);
+// ?p=<slug> is a shared link to one photo: land on its page with the viewer
+// open on it.
+const focusSlug = Astro.url.searchParams.get("p");
 
 const { entries: all, cacheHint } = await getEmDashCollection("photos", {
 	orderBy: { published_at: "desc" },
@@ -24,9 +30,17 @@ all.sort((a, b) => {
 
 // Paginate after sorting: published_at ordering from the DB says nothing
 // useful here, so the real order is only known once taken_at is applied.
+const focusIndex = focusSlug ? all.findIndex((e) => e.id === focusSlug) : -1;
+if (focusIndex >= 0) page = Math.floor(focusIndex / PER_PAGE) + 1;
 const totalPages = Math.max(1, Math.ceil(all.length / PER_PAGE));
 const current = Math.min(page, totalPages);
 const photos = all.slice((current - 1) * PER_PAGE, current * PER_PAGE);
+const openAt = focusIndex >= 0 ? focusIndex - (current - 1) * PER_PAGE : null;
+
+const formatDate = (value: Date | string | null | undefined) =>
+	value
+		? new Date(value).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+		: null;
 
 if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
 
@@ -106,7 +120,7 @@ function fullSrc(img: unknown): string | undefined {
 		}
 	</div>
 
-	<div class="viewer" data-viewer hidden>
+	<div class="viewer" data-viewer data-open-at={openAt ?? undefined} hidden>
 		<button type="button" class="v-close" data-close aria-label="Close viewer">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
 				<path d="M6 6l12 12M18 6L6 18"></path>
@@ -117,19 +131,33 @@ function fullSrc(img: unknown): string | undefined {
 			{
 				photos.map((photo) => (
 					<figure class="v-slide">
-						<img src={fullSrc(photo.data.image)} alt={photo.data.title} loading="lazy" />
-						<figcaption>
-							{!titleEchoesCaption(photo.data.title, photo.data.caption) && (
-								<span class="v-title">{photo.data.title}</span>
-							)}
-							{photo.data.caption && <span class="v-caption">{photo.data.caption}</span>}
-							{photo.data.location && <span class="v-location">{photo.data.location}</span>}
-						</figcaption>
+						<div class="v-media">
+							<img src={fullSrc(photo.data.image)} alt={photo.data.title} loading="lazy" />
+							<ActionRail
+								collection="photos"
+								contentId={photo.data.id}
+								shareUrl={`${Astro.url.origin}/photos?p=${photo.id}`}
+								shareTitle={photo.data.title}
+							/>
+						</div>
+						<div class="v-text">
+							<FeedCaption
+								kicker={
+									[photo.data.location, formatDate(photo.data.taken_at ?? photo.data.publishedAt)]
+										.filter(Boolean)
+										.join(" · ") || null
+								}
+								title={photo.data.title}
+								caption={photo.data.caption}
+								showTitle={!titleEchoesCaption(photo.data.title, photo.data.caption)}
+							/>
+						</div>
 					</figure>
 				))
 			}
 		</div>
 	</div>
+	<CaptionSheet />
 </MobileShell>
 
 <style>
@@ -256,55 +284,38 @@ function fullSrc(img: unknown): string | undefined {
 		display: none;
 	}
 
+	/* Same two-row layout as the home feed: media above, text below. */
 	.v-slide {
 		height: 100dvh;
 		margin: 0;
 		scroll-snap-align: start;
 		scroll-snap-stop: always;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: var(--spacing-4);
-		padding: calc(env(safe-area-inset-top, 0px) + 56px) var(--spacing-5)
+		display: grid;
+		grid-template-rows: minmax(0, 1fr) auto;
+		padding: calc(env(safe-area-inset-top, 0px) + 60px) 0
 			calc(env(safe-area-inset-bottom, 0px) + var(--spacing-6));
 		box-sizing: border-box;
 	}
 
-	.v-slide img {
+	.v-media {
+		position: relative;
+		min-height: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0 var(--spacing-5);
+	}
+
+	.v-media img {
 		max-width: 100%;
-		max-height: 70dvh;
+		max-height: 100%;
 		object-fit: contain;
 		border-radius: 10px;
 		display: block;
 	}
 
-	.v-slide figcaption {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		text-align: center;
-		max-width: 100%;
-	}
-
-	.v-title {
-		font-size: 0.9375rem;
-		font-weight: 600;
-	}
-
-	.v-caption {
-		font-size: 0.875rem;
-		line-height: 1.5;
-		color: rgb(255 255 255 / 0.66);
-		max-height: 6.5em;
-		overflow-y: auto;
-	}
-
-	.v-location {
-		font-size: 0.6875rem;
-		text-transform: uppercase;
-		letter-spacing: var(--tracking-wide);
-		color: rgb(255 255 255 / 0.4);
+	.v-text {
+		padding: 12px var(--spacing-5) 0;
 	}
 
 	.v-close {
@@ -334,6 +345,7 @@ function fullSrc(img: unknown): string | undefined {
 
 <script>
 	import { bindSnapKeys } from "../utils/snap-keys";
+	import { bindShare } from "../utils/rail";
 
 	// The viewer is a vertical snap feed of every photo, matching the home feed's
 	// interaction. Opening scrolls straight to the tapped one.
@@ -358,6 +370,10 @@ function fullSrc(img: unknown): string | undefined {
 
 	tiles.forEach((tile, i) => tile.addEventListener("click", () => open(i)));
 
+	// A shared link (?p=slug) lands with the viewer already on that photo.
+	const openAt = viewer?.dataset.openAt;
+	if (openAt !== undefined && openAt !== "") open(Number(openAt));
+
 	viewer?.addEventListener("click", (event) => {
 		if ((event.target as HTMLElement).closest("[data-close]")) close();
 	});
@@ -370,5 +386,6 @@ function fullSrc(img: unknown): string | undefined {
 	// they would fight the grid page behind it.
 	if (track && viewer) {
 		bindSnapKeys(track, ".v-slide", { isActive: () => !viewer.hidden });
+		bindShare(viewer);
 	}
 </script>

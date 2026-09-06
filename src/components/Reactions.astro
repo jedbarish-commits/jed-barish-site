@@ -1,9 +1,15 @@
 ---
 /**
- * Reaction bar. Counts load client-side so the page itself stays cacheable.
+ * Reactions. Counts load client-side so the page itself stays cacheable.
  *
  * One reaction per person per item: tapping another swaps it, tapping the
- * active one clears it. The bar is a radio group that can also be empty.
+ * active one clears it. The set is a radio group that can also be empty.
+ *
+ * Two shapes: "bar" is the row of pills used on the detail page; "rail" is a
+ * single round button for the feed's action column. Collapsed, it shows the
+ * viewer's own reaction if they have one (it is also their toggle), otherwise
+ * the crowd's leading one — a neutral face with "3" under it when it's really
+ * two 🤟 and one ❤️ tells the reader nothing. Tapping opens the picker.
  *
  * 🤟 is the ASL "I love you" handshape — worth having as a first-class
  * reaction on this site rather than only the generic set.
@@ -12,9 +18,10 @@ interface Props {
 	collection: "posts" | "photos";
 	contentId: string;
 	compact?: boolean;
+	variant?: "bar" | "rail";
 }
 
-const { collection, contentId, compact = false } = Astro.props;
+const { collection, contentId, compact = false, variant = "bar" } = Astro.props;
 
 const KINDS = [
 	{ kind: "like", glyph: "👍", label: "Like" },
@@ -22,37 +29,66 @@ const KINDS = [
 	{ kind: "ily", glyph: "🤟", label: "I love you" },
 	{ kind: "wow", glyph: "😮", label: "Wow" },
 ];
+
+const NEUTRAL = "🙂";
 ---
 
 <div
-	class:list={["reactions", { compact }]}
+	class:list={["reactions", variant, { compact }]}
 	data-reactions
 	data-collection={collection}
 	data-id={contentId}
+	data-variant={variant}
 >
 	{
-		KINDS.map(({ kind, glyph, label }) => (
-			<button type="button" data-kind={kind} aria-pressed="false" title={label}>
-				<span class="glyph" aria-hidden="true">
-					{glyph}
+		variant === "rail" && (
+			<button
+				type="button"
+				class="rx-toggle"
+				data-rx-toggle
+				data-active="false"
+				aria-expanded="false"
+				aria-haspopup="true"
+				aria-label="React"
+			>
+				<span class="rx-glyph" data-rx-glyph aria-hidden="true">
+					{NEUTRAL}
 				</span>
-				<span class="count" data-count>
-					0
-				</span>
-				<span class="visually-hidden">{label}</span>
+				<span class="rx-total" data-rx-total />
 			</button>
-		))
+		)
 	}
+	<div class="rx-kinds" data-rx-kinds hidden={variant === "rail"}>
+		{
+			KINDS.map(({ kind, glyph, label }) => (
+				<button type="button" data-kind={kind} data-glyph={glyph} aria-pressed="false" title={label}>
+					<span class="glyph" aria-hidden="true">
+						{glyph}
+					</span>
+					<span class="count" data-count />
+					<span class="visually-hidden">{label}</span>
+				</button>
+			))
+		}
+	</div>
 </div>
 
 <style>
 	.reactions {
+		position: relative;
+	}
+
+	.rx-kinds {
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--spacing-2);
 	}
 
-	button {
+	.rx-kinds[hidden] {
+		display: none;
+	}
+
+	.rx-kinds button {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
@@ -72,13 +108,13 @@ const KINDS = [
 			transform var(--transition-fast);
 	}
 
-	button[aria-pressed="true"] {
+	.rx-kinds button[aria-pressed="true"] {
 		background: rgb(255 255 255 / 0.16);
 		border-color: rgb(255 255 255 / 0.32);
 		color: #fff;
 	}
 
-	button:active {
+	.rx-kinds button:active {
 		transform: scale(0.94);
 	}
 
@@ -91,9 +127,86 @@ const KINDS = [
 		min-width: 1ch;
 	}
 
-	.compact button {
+	.count:empty {
+		display: none;
+	}
+
+	.compact .rx-kinds button {
 		padding: 5px 10px;
 		font-size: 0.75rem;
+	}
+
+	/* Rail: one round button, the picker floats out to its left. */
+	.rx-toggle {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 3px;
+		padding: 0;
+		border: 0;
+		background: none;
+		color: #fff;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.rx-glyph {
+		width: 44px;
+		height: 44px;
+		display: grid;
+		place-items: center;
+		border-radius: 50%;
+		background: rgb(0 0 0 / 0.45);
+		font-size: 1.25rem;
+		line-height: 1;
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+		transition: transform var(--transition-fast);
+	}
+
+	.rx-toggle[data-active="true"] .rx-glyph {
+		background: rgb(255 255 255 / 0.22);
+		box-shadow: 0 0 0 1.5px rgb(255 255 255 / 0.6);
+	}
+
+	.rx-toggle:active .rx-glyph {
+		transform: scale(0.94);
+	}
+
+	.rx-total {
+		font-size: 0.75rem;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+		text-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
+		min-height: 1em;
+	}
+
+	.rail .rx-kinds {
+		position: absolute;
+		right: 52px;
+		top: 22px;
+		transform: translateY(-50%);
+		flex-wrap: nowrap;
+		gap: 4px;
+		padding: 5px;
+		border-radius: 999px;
+		background: rgb(20 20 22 / 0.94);
+		border: 1px solid rgb(255 255 255 / 0.12);
+		box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+	}
+
+	.rail .rx-kinds button {
+		padding: 7px 10px;
+		border-color: transparent;
+		background: none;
+	}
+
+	.rail .rx-kinds button[aria-pressed="true"] {
+		background: rgb(255 255 255 / 0.16);
+	}
+
+	.rail .glyph {
+		font-size: 1.125rem;
 	}
 
 	.visually-hidden {
@@ -106,7 +219,8 @@ const KINDS = [
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		button {
+		.rx-kinds button,
+		.rx-glyph {
 			transition: none;
 		}
 	}
@@ -132,28 +246,54 @@ const KINDS = [
 	}
 
 	const visitor = visitorId();
+	type Counts = Record<string, number>;
+	type Reply = { counts?: Counts; mine?: string | null };
 
 	for (const bar of document.querySelectorAll<HTMLElement>("[data-reactions]")) {
 		const collection = bar.dataset.collection!;
 		const id = bar.dataset.id!;
 		const buttons = [...bar.querySelectorAll<HTMLButtonElement>("[data-kind]")];
+		const toggle = bar.querySelector<HTMLButtonElement>("[data-rx-toggle]");
+		const kinds = bar.querySelector<HTMLElement>("[data-rx-kinds]");
+		const glyphEl = bar.querySelector<HTMLElement>("[data-rx-glyph]");
+		const totalEl = bar.querySelector<HTMLElement>("[data-rx-total]");
+		const neutral = glyphEl?.textContent?.trim() ?? "🙂";
+		const isRail = bar.dataset.variant === "rail";
 
-		const paint = (counts: Record<string, number>, mine: string | null) => {
+		const paint = (counts: Counts, mine: string | null) => {
 			for (const button of buttons) {
 				const kind = button.dataset.kind!;
 				const countEl = button.querySelector<HTMLElement>("[data-count]");
-				if (countEl) countEl.textContent = String(counts[kind] ?? 0);
+				// Blank at zero rather than a row of 0s.
+				if (countEl) countEl.textContent = counts[kind] ? String(counts[kind]) : "";
 				button.setAttribute("aria-pressed", String(kind === mine));
+			}
+			if (toggle && glyphEl && totalEl) {
+				let lead: string | null = mine;
+				if (!lead) {
+					let best = 0;
+					for (const [kind, n] of Object.entries(counts)) {
+						if (n > best) {
+							best = n;
+							lead = kind;
+						}
+					}
+				}
+				const glyph = lead ? buttons.find((b) => b.dataset.kind === lead)?.dataset.glyph : null;
+				glyphEl.textContent = glyph ?? neutral;
+				const total = Object.values(counts).reduce((a, b) => a + b, 0);
+				totalEl.textContent = total ? String(total) : "";
+				toggle.dataset.active = String(!!mine);
 			}
 		};
 
-		const currentCounts = () =>
+		const currentCounts = (): Counts =>
 			Object.fromEntries(
 				buttons.map((b) => [
 					b.dataset.kind!,
-					Number(b.querySelector("[data-count]")?.textContent ?? 0),
+					Number(b.querySelector("[data-count]")?.textContent || 0),
 				]),
-			) as Record<string, number>;
+			);
 
 		const currentMine = () =>
 			buttons.find((b) => b.getAttribute("aria-pressed") === "true")?.dataset.kind ?? null;
@@ -167,11 +307,7 @@ const KINDS = [
 			loaded = true;
 			const params = new URLSearchParams({ collection, id, visitor });
 			fetch(`/api/reactions?${params}`)
-				.then((r) =>
-					r.ok
-						? (r.json() as Promise<{ counts?: Record<string, number>; mine?: string | null }>)
-						: null,
-				)
+				.then((r) => (r.ok ? (r.json() as Promise<Reply>) : null))
 				.then((data) => data && paint(data.counts ?? {}, data.mine ?? null))
 				.catch(() => {});
 		};
@@ -187,8 +323,27 @@ const KINDS = [
 		);
 		io.observe(bar);
 
+		const setOpen = (open: boolean) => {
+			if (!toggle || !kinds) return;
+			kinds.hidden = !open;
+			toggle.setAttribute("aria-expanded", String(open));
+		};
+
+		toggle?.addEventListener("click", (event) => {
+			event.stopPropagation();
+			load();
+			setOpen(Boolean(kinds?.hidden));
+		});
+
+		if (isRail) {
+			document.addEventListener("click", (event) => {
+				if (!bar.contains(event.target as Node)) setOpen(false);
+			});
+		}
+
 		for (const button of buttons) {
-			button.addEventListener("click", async () => {
+			button.addEventListener("click", async (event) => {
+				event.stopPropagation();
 				const kind = button.dataset.kind!;
 				// Optimistic: move the reaction immediately — the old one down, the
 				// new one up — then reconcile with the server's counts.
@@ -198,6 +353,7 @@ const KINDS = [
 				if (before.mine) guess[before.mine] = Math.max(0, (guess[before.mine] ?? 0) - 1);
 				if (next) guess[next] = (guess[next] ?? 0) + 1;
 				paint(guess, next);
+				if (isRail) setOpen(false);
 
 				try {
 					const res = await fetch("/api/reactions", {
@@ -206,10 +362,7 @@ const KINDS = [
 						body: JSON.stringify({ collection, id, kind, visitor }),
 					});
 					if (!res.ok) throw new Error(String(res.status));
-					const data = (await res.json()) as {
-						counts?: Record<string, number>;
-						mine?: string | null;
-					};
+					const data = (await res.json()) as Reply;
 					paint(data.counts ?? {}, data.mine ?? null);
 				} catch {
 					paint(before.counts, before.mine);

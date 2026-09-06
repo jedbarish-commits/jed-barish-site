@@ -1,34 +1,36 @@
 ---
 import type { ImageValue } from "emdash";
 import { Image } from "emdash/ui";
-import Reactions from "./Reactions.astro";
+import ActionRail from "./ActionRail.astro";
+import FeedCaption from "./FeedCaption.astro";
 import { titleEchoesCaption } from "../utils/text";
 
 /**
- * One full-viewport panel in the swipe feed.
+ * One full-viewport video panel in the swipe feed.
  *
- * The player is a facade: we render the R2-hosted thumbnail and only swap in
- * the YouTube or Vimeo iframe once the visitor taps play. Eighteen live
- * iframes on one page would cost several megabytes and stall scrolling on a
- * phone.
+ * The player is created by the feed script when the panel comes into view
+ * and plays muted on its own; until it has painted a frame the poster stays
+ * up. The media sits in a box of its own aspect ratio — handing the player
+ * the whole column is wrong on a phone, where nothing in our code would
+ * decide where the leftover height goes. Letterboxed rather than cropped:
+ * these clips carry burned-in captions that run nearly the full width.
  */
 interface Props {
 	title: string;
 	youtubeId?: string;
 	/** Vimeo reference: "id" or "id:hash" for an unlisted video. */
 	vimeoRef?: string | null;
-	/** Self-hosted file (an Instagram import), used when there is no YouTube id. */
+	/** Self-hosted file (an Instagram import), used when there is no hosted id. */
 	videoSrc?: string | null;
-	/** Optional link shown as a button — a sponsor, an event, the full cut. */
-	ctaUrl?: string | null;
-	ctaLabel?: string | null;
 	featuredImage?: ImageValue | null;
 	excerpt?: string | null;
 	href: string;
+	shareUrl: string;
 	date?: string | null;
 	index: number;
-	/** Omit to hide the reaction bar. */
-	contentId?: string;
+	contentId: string;
+	ctaUrl?: string | null;
+	ctaLabel?: string | null;
 }
 
 const {
@@ -39,6 +41,7 @@ const {
 	featuredImage,
 	excerpt,
 	href,
+	shareUrl,
 	date,
 	index,
 	contentId,
@@ -46,59 +49,66 @@ const {
 	ctaLabel,
 } = Astro.props;
 
-const showExcerpt = !titleEchoesCaption(title, excerpt);
-// Only web links become buttons; anything else stays text.
-const cta = ctaUrl && /^https?:\/\//i.test(ctaUrl) ? ctaUrl : null;
+// The poster is a frame of the video, so its shape is the video's shape.
+const ratio =
+	featuredImage?.width && featuredImage?.height
+		? featuredImage.width / featuredImage.height
+		: 16 / 9;
+const showTitle = !titleEchoesCaption(title, excerpt);
 ---
 
-<section class="panel" aria-label={title}>
-	<div class="panel-inner">
+<section class="panel" data-panel aria-label={title}>
+	<div class="media">
 		<div
-			class="player"
+			class="box"
+			style={`--arn:${ratio.toFixed(4)}`}
 			data-player
 			data-video-id={youtubeId || undefined}
 			data-vimeo={vimeoRef || undefined}
 			data-video-src={videoSrc || undefined}
 			data-title={title}
 		>
-			<button class="player-trigger" type="button" data-play>
-				<span class="visually-hidden">Play {title}</span>
-				{
-					featuredImage ? (
-						<Image
-							image={featuredImage}
-							class="player-thumb"
-							loading={index < 2 ? "eager" : "lazy"}
-						/>
-					) : (
-						<span class="player-thumb player-thumb-empty" />
-					)
-				}
-				<span class="player-scrim" aria-hidden="true"></span>
-				<span class="play-badge" aria-hidden="true">
-					<svg viewBox="0 0 24 24" fill="currentColor">
-						<path d="M8 5.5v13l11-6.5z"></path>
-					</svg>
-				</span>
-			</button>
-		</div>
-
-		<div class="meta">
-			<h2 class="title">
-				<a href={href}>{title}</a>
-			</h2>
-			{excerpt && showExcerpt && <p class="excerpt">{excerpt}</p>}
 			{
-				cta && (
-					<a class="cta" href={cta} target="_blank" rel="noopener noreferrer">
-						{ctaLabel || "Learn more"}
-						<span aria-hidden="true">↗</span>
-					</a>
+				featuredImage ? (
+					<Image
+						image={featuredImage}
+						class="poster"
+						loading={index < 2 ? "eager" : "lazy"}
+					/>
+				) : (
+					<span class="poster poster-empty" />
 				)
 			}
-			{contentId && <Reactions collection="posts" contentId={contentId} compact />}
-			{date && <p class="date">{date}</p>}
+			<button type="button" class="play-glyph" data-play hidden>
+				<span class="visually-hidden">Play {title}</span>
+				<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+					<path d="M8 5.5v13l11-6.5z"></path>
+				</svg>
+			</button>
+			<div class="ring" data-ring hidden>
+				<span class="visually-hidden">Loading</span>
+			</div>
 		</div>
+		<ActionRail video collection="posts" contentId={contentId} shareUrl={shareUrl} shareTitle={title} />
+		{
+			index === 0 && (
+				<p class="swipe-hint" data-swipe-hint>
+					Swipe up for more ↑
+				</p>
+			)
+		}
+	</div>
+
+	<div class="text">
+		<FeedCaption
+			kicker={date}
+			title={title}
+			href={href}
+			caption={excerpt}
+			showTitle={showTitle}
+			ctaUrl={ctaUrl}
+			ctaLabel={ctaLabel}
+		/>
 	</div>
 </section>
 
@@ -107,147 +117,154 @@ const cta = ctaUrl && /^https?:\/\//i.test(ctaUrl) ? ctaUrl : null;
 		height: 100%;
 		scroll-snap-align: start;
 		scroll-snap-stop: always;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: calc(env(safe-area-inset-top, 0px) + var(--spacing-6))
-			var(--spacing-5)
-			/* leave room for the floating nav */ 104px;
+		display: grid;
+		grid-template-rows: minmax(0, 1fr) auto;
+		padding-top: env(safe-area-inset-top, 0px);
 		box-sizing: border-box;
 	}
 
-	.panel-inner {
-		width: 100%;
-		display: flex;
-		flex-direction: column;
-		gap: var(--spacing-5);
-	}
-
-	.player {
+	.media {
 		position: relative;
-		width: 100%;
-		aspect-ratio: 16 / 9;
-		border-radius: 14px;
-		overflow: hidden;
+		min-height: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 8px 0;
+		/* Lets the box size itself from this area's height (100cqh). */
+		container-type: size;
+	}
+
+	/* Width is the one definite dimension; the ratio derives the height. */
+	.box {
+		position: relative;
+		width: min(100%, calc(100cqh * var(--arn)));
+		aspect-ratio: var(--arn);
 		background: #000;
-		box-shadow: 0 8px 28px -10px rgb(0 0 0 / 0.7);
+		border-radius: 12px;
+		overflow: hidden;
 	}
 
-	.player-trigger {
-		display: block;
-		width: 100%;
-		height: 100%;
-		padding: 0;
-		border: 0;
-		background: none;
-		cursor: pointer;
-		-webkit-tap-highlight-color: transparent;
-	}
-
-	.player :global(.player-thumb) {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		display: block;
-	}
-
-	.player-thumb-empty {
-		display: block;
-		background: #1a1a1c;
-	}
-
-	.player-scrim {
+	.box :global(.poster),
+	.box :global(video),
+	.box :global(iframe) {
 		position: absolute;
 		inset: 0;
-		background: linear-gradient(
-			to bottom,
-			rgb(0 0 0 / 0.05),
-			rgb(0 0 0 / 0.35)
-		);
+		width: 100%;
+		height: 100%;
+		border: 0;
+		display: block;
+		object-fit: contain;
+		background: #000;
 	}
 
-	.play-badge {
+	.box :global(.poster) {
+		z-index: 1;
+		transition: opacity 180ms ease-out;
+	}
+
+	.poster-empty {
+		background: #17171a;
+	}
+
+	/* Fed by the player's first painted frame, never by "play" — that fires
+	   before a frame exists. And not by "paused": a paused video still has a
+	   picture on screen. */
+	.box.is-painted :global(.poster) {
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.play-glyph {
 		position: absolute;
 		top: 50%;
 		left: 50%;
-		transform: translate(-50%, -50%);
-		width: 60px;
-		height: 60px;
+		z-index: 2;
+		width: 64px;
+		height: 64px;
+		margin: -32px 0 0 -32px;
 		display: grid;
 		place-items: center;
+		padding: 0;
+		border: 0;
 		border-radius: 50%;
 		color: #111;
 		background: rgb(255 255 255 / 0.94);
 		box-shadow: 0 4px 16px rgb(0 0 0 / 0.4);
-		transition: transform var(--transition-fast);
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
 	}
 
-	.play-badge svg {
-		width: 30px;
-		height: 30px;
+	.play-glyph[hidden] {
+		display: none;
+	}
+
+	.play-glyph svg {
+		width: 32px;
+		height: 32px;
 		margin-left: 3px;
 	}
 
-	@media (hover: hover) {
-		.player-trigger:hover .play-badge {
-			transform: translate(-50%, -50%) scale(1.06);
+	/* The ring is decorative; the label carries the meaning, so it still
+	   reads with motion switched off. */
+	.ring {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		z-index: 2;
+		width: 56px;
+		height: 56px;
+		margin: -28px 0 0 -28px;
+		border-radius: 50%;
+		background: rgb(0 0 0 / 0.45);
+		backdrop-filter: blur(6px);
+		-webkit-backdrop-filter: blur(6px);
+	}
+
+	.ring[hidden] {
+		display: none;
+	}
+
+	.ring::after {
+		content: "";
+		position: absolute;
+		inset: 13px;
+		border-radius: 50%;
+		border: 3px solid rgb(255 255 255 / 0.28);
+		border-top-color: #fff;
+		animation: spin 900ms linear infinite;
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
 		}
 	}
 
-	.player :global(iframe),
-	.player :global(video) {
-		width: 100%;
-		height: 100%;
-		border: 0;
-		display: block;
-	}
-
-	.meta {
-		display: flex;
-		flex-direction: column;
-		gap: var(--spacing-2);
-	}
-
-	.title {
-		font-size: 1.25rem;
-		line-height: 1.25;
-		font-weight: 600;
-		letter-spacing: var(--tracking-tight);
+	.swipe-hint {
+		position: absolute;
+		top: 16px;
+		left: 50%;
+		z-index: 3;
+		transform: translateX(-50%);
 		margin: 0;
-	}
-
-	.title a {
-		color: #fff;
-		text-decoration: none;
-	}
-
-	.excerpt {
-		margin: 0;
-		font-size: 0.9375rem;
-		line-height: 1.5;
-		color: rgb(255 255 255 / 0.66);
-	}
-
-	.cta {
-		align-self: flex-start;
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		padding: 9px 16px;
+		padding: 7px 14px;
 		border-radius: 999px;
-		background: #fff;
-		color: #111;
-		font-size: 0.875rem;
-		font-weight: 600;
-		text-decoration: none;
+		background: rgb(255 255 255 / 0.16);
+		color: #fff;
+		font-size: 0.8125rem;
+		white-space: nowrap;
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+		transition: opacity 300ms;
 	}
 
-	.date {
-		margin: 0;
-		font-size: 0.75rem;
-		letter-spacing: var(--tracking-wide);
-		text-transform: uppercase;
-		color: rgb(255 255 255 / 0.4);
+	.swipe-hint.is-gone {
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.text {
+		padding: 12px var(--spacing-5) calc(env(safe-area-inset-bottom, 0px) + 96px);
 	}
 
 	.visually-hidden {
@@ -260,7 +277,12 @@ const cta = ctaUrl && /^https?:\/\//i.test(ctaUrl) ? ctaUrl : null;
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.play-badge {
+		.ring::after {
+			animation: none;
+		}
+
+		.box :global(.poster),
+		.swipe-hint {
 			transition: none;
 		}
 	}

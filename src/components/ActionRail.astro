@@ -1,0 +1,102 @@
+---
+import Reactions from "./Reactions.astro";
+
+/**
+ * The column of round buttons at the media's right edge: mute and fullscreen
+ * for video, then one collapsed reaction and share for everything.
+ *
+ * The buttons carry no behaviour themselves — the feed script wires mute,
+ * fullscreen and share by their data attributes, so a rail works the same in
+ * the home feed and the photo viewer.
+ */
+interface Props {
+	video?: boolean;
+	collection: "posts" | "photos";
+	contentId: string;
+	shareUrl: string;
+	shareTitle: string;
+}
+
+const { video = false, collection, contentId, shareUrl, shareTitle } = Astro.props;
+---
+
+<div class="rail">
+	{
+		video && (
+			<>
+				<button type="button" class="rail-btn" data-mute data-muted="true" aria-label="Unmute">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" />
+						<path class="ic-muted" d="M16 9.5l4 5M20 9.5l-4 5" />
+						<path class="ic-sound" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" />
+					</svg>
+				</button>
+				<button type="button" class="rail-btn" data-fullscreen aria-label="Full screen">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
+					</svg>
+				</button>
+			</>
+		)
+	}
+	<Reactions collection={collection} contentId={contentId} variant="rail" />
+	<button
+		type="button"
+		class="rail-btn"
+		data-share
+		data-share-url={shareUrl}
+		data-share-title={shareTitle}
+		aria-label="Share"
+	>
+		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<circle cx="18" cy="5.5" r="2.5" />
+			<circle cx="6" cy="12" r="2.5" />
+			<circle cx="18" cy="18.5" r="2.5" />
+			<path d="M8.2 10.8l7.6-4M8.2 13.2l7.6 4" />
+		</svg>
+	</button>
+</div>
+
+<style is:global>
+	.rail {
+		position: absolute;
+		right: 10px;
+		bottom: 12px;
+		z-index: 3;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.rail-btn {
+		width: 44px;
+		height: 44px;
+		display: grid;
+		place-items: center;
+		padding: 0;
+		border: 0;
+		border-radius: 50%;
+		background: rgb(0 0 0 / 0.45);
+		color: #fff;
+		cursor: pointer;
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.rail-btn svg {
+		width: 22px;
+		height: 22px;
+	}
+
+	.rail-btn:active {
+		transform: scale(0.94);
+	}
+
+	/* One speaker icon, two states. */
+	[data-mute][data-muted="true"] .ic-sound,
+	[data-mute][data-muted="false"] .ic-muted {
+		display: none;
+	}
+</style>
