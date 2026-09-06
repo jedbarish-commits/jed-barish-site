@@ -59,6 +59,10 @@ const { video = false, collection, contentId, shareUrl, shareTitle } = Astro.pro
 
 <style is:global>
 	.action-rail {
+		/* Reads over video and over the black below a landscape clip alike —
+		   a translucent black would vanish on the latter. */
+		--rail-bg: rgb(64 64 70 / 0.6);
+		--rail-border: rgb(255 255 255 / 0.12);
 		position: absolute;
 		right: 10px;
 		bottom: 12px;
@@ -75,9 +79,9 @@ const { video = false, collection, contentId, shareUrl, shareTitle } = Astro.pro
 		display: grid;
 		place-items: center;
 		padding: 0;
-		border: 0;
+		border: 1px solid var(--rail-border);
 		border-radius: 50%;
-		background: rgb(0 0 0 / 0.45);
+		background: var(--rail-bg);
 		color: #fff;
 		cursor: pointer;
 		backdrop-filter: blur(10px);

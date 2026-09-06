@@ -156,8 +156,9 @@ const NEUTRAL = "🙂";
 		height: 44px;
 		display: grid;
 		place-items: center;
+		border: 1px solid var(--rail-border, transparent);
 		border-radius: 50%;
-		background: rgb(0 0 0 / 0.45);
+		background: var(--rail-bg, rgb(0 0 0 / 0.45));
 		font-size: 1.25rem;
 		line-height: 1;
 		backdrop-filter: blur(10px);
@@ -165,9 +166,10 @@ const NEUTRAL = "🙂";
 		transition: transform var(--transition-fast);
 	}
 
+	/* Yours: a touch brighter than the rest, not a different object. */
 	.rx-toggle[data-active="true"] .rx-glyph {
-		background: rgb(255 255 255 / 0.22);
-		box-shadow: 0 0 0 1.5px rgb(255 255 255 / 0.6);
+		background: rgb(255 255 255 / 0.18);
+		border-color: rgb(255 255 255 / 0.45);
 	}
 
 	.rx-toggle:active .rx-glyph {
