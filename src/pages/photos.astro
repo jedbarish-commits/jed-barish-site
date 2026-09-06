@@ -333,6 +333,8 @@ function fullSrc(img: unknown): string | undefined {
 </style>
 
 <script>
+	import { bindSnapKeys } from "../utils/snap-keys";
+
 	// The viewer is a vertical snap feed of every photo, matching the home feed's
 	// interaction. Opening scrolls straight to the tapped one.
 	const viewer = document.querySelector<HTMLElement>("[data-viewer]");
@@ -363,4 +365,10 @@ function fullSrc(img: unknown): string | undefined {
 	document.addEventListener("keydown", (event) => {
 		if (event.key === "Escape" && viewer && !viewer.hidden) close();
 	});
+
+	// Arrows move between photos, but only while the viewer is open — otherwise
+	// they would fight the grid page behind it.
+	if (track && viewer) {
+		bindSnapKeys(track, ".v-slide", { isActive: () => !viewer.hidden });
+	}
 </script>

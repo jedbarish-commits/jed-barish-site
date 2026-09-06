@@ -158,6 +158,8 @@ const formatDate = (value: Date | string | null | undefined) =>
 </style>
 
 <script>
+	import { bindSnapKeys } from "../utils/snap-keys";
+
 	// Facade player: the YouTube iframe is only created on tap, and torn back
 	// down once its panel scrolls out of view so audio never trails behind the
 	// visible video. Photo panels have no player and are simply ignored.
@@ -236,5 +238,7 @@ const formatDate = (value: Date | string | null | undefined) =>
 		for (const player of feed.querySelectorAll("[data-player]")) {
 			observer.observe(player);
 		}
+
+		bindSnapKeys(feed, ".panel");
 	}
 </script>
