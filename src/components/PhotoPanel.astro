@@ -1,4 +1,5 @@
 ---
+import type { ImageValue } from "emdash";
 import { Image } from "emdash/ui";
 import Reactions from "./Reactions.astro";
 import { titleEchoesCaption } from "../utils/text";
@@ -11,7 +12,7 @@ import { titleEchoesCaption } from "../utils/text";
  */
 interface Props {
 	title: string;
-	image: unknown;
+	image: ImageValue | null | undefined;
 	caption?: string | null;
 	location?: string | null;
 	date?: string | null;

@@ -1,5 +1,6 @@
 ---
 import { getEmDashCollection } from "emdash";
+import type { ImageValue } from "emdash";
 import { Image } from "emdash/ui";
 import MobileShell from "../layouts/MobileShell.astro";
 
@@ -37,7 +38,7 @@ const sorted = [...milestones].sort((a, b) => {
 							<div class="entry">
 								{m.data.image && (
 									<span class="entry-image">
-										<Image image={m.data.image} loading="lazy" />
+										<Image image={m.data.image as ImageValue} loading="lazy" />
 									</span>
 								)}
 								<h2>{m.data.title}</h2>
