@@ -7,14 +7,20 @@ import { titleEchoesCaption } from "../utils/text";
  * One full-viewport panel in the swipe feed.
  *
  * The player is a facade: we render the R2-hosted thumbnail and only swap in
- * the YouTube iframe once the visitor taps play. Eighteen live iframes on one
- * page would cost several megabytes and stall scrolling on a phone.
+ * the YouTube or Vimeo iframe once the visitor taps play. Eighteen live
+ * iframes on one page would cost several megabytes and stall scrolling on a
+ * phone.
  */
 interface Props {
 	title: string;
 	youtubeId?: string;
+	/** Vimeo reference: "id" or "id:hash" for an unlisted video. */
+	vimeoRef?: string | null;
 	/** Self-hosted file (an Instagram import), used when there is no YouTube id. */
 	videoSrc?: string | null;
+	/** Optional link shown as a button — a sponsor, an event, the full cut. */
+	ctaUrl?: string | null;
+	ctaLabel?: string | null;
 	featuredImage?: unknown;
 	excerpt?: string | null;
 	href: string;
@@ -27,6 +33,7 @@ interface Props {
 const {
 	title,
 	youtubeId,
+	vimeoRef,
 	videoSrc,
 	featuredImage,
 	excerpt,
@@ -34,9 +41,13 @@ const {
 	date,
 	index,
 	contentId,
+	ctaUrl,
+	ctaLabel,
 } = Astro.props;
 
 const showExcerpt = !titleEchoesCaption(title, excerpt);
+// Only web links become buttons; anything else stays text.
+const cta = ctaUrl && /^https?:\/\//i.test(ctaUrl) ? ctaUrl : null;
 ---
 
 <section class="panel" aria-label={title}>
@@ -45,6 +56,7 @@ const showExcerpt = !titleEchoesCaption(title, excerpt);
 			class="player"
 			data-player
 			data-video-id={youtubeId || undefined}
+			data-vimeo={vimeoRef || undefined}
 			data-video-src={videoSrc || undefined}
 			data-title={title}
 		>
@@ -75,6 +87,14 @@ const showExcerpt = !titleEchoesCaption(title, excerpt);
 				<a href={href}>{title}</a>
 			</h2>
 			{excerpt && showExcerpt && <p class="excerpt">{excerpt}</p>}
+			{
+				cta && (
+					<a class="cta" href={cta} target="_blank" rel="noopener noreferrer">
+						{ctaLabel || "Learn more"}
+						<span aria-hidden="true">↗</span>
+					</a>
+				)
+			}
 			{contentId && <Reactions collection="posts" contentId={contentId} compact />}
 			{date && <p class="date">{date}</p>}
 		</div>
@@ -205,6 +225,20 @@ const showExcerpt = !titleEchoesCaption(title, excerpt);
 		font-size: 0.9375rem;
 		line-height: 1.5;
 		color: rgb(255 255 255 / 0.66);
+	}
+
+	.cta {
+		align-self: flex-start;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 9px 16px;
+		border-radius: 999px;
+		background: #fff;
+		color: #111;
+		font-size: 0.875rem;
+		font-weight: 600;
+		text-decoration: none;
 	}
 
 	.date {

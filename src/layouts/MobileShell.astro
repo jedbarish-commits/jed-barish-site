@@ -29,6 +29,8 @@ interface Props {
 	author?: string | null;
 	/** Fills the viewport and manages its own scrolling (the feed). */
 	fullBleed?: boolean;
+	/** Studio / Admin shortcuts for a signed-in editor. Off on Studio itself. */
+	adminEscape?: boolean;
 	content?: { collection: string; id: string; slug?: string | null };
 }
 
@@ -44,6 +46,7 @@ const {
 	modifiedTime,
 	author,
 	fullBleed = false,
+	adminEscape = true,
 	content,
 } = Astro.props;
 
@@ -129,10 +132,11 @@ const isLoggedIn = !!Astro.locals.user;
 		</div>
 
 		{
-			isLoggedIn && (
-				<a href="/_emdash/admin" class="admin-escape">
-					Admin
-				</a>
+			isLoggedIn && adminEscape && (
+				<nav class="admin-escape" aria-label="Editor shortcuts">
+					<a href="/studio">Studio</a>
+					<a href="/_emdash/admin">Admin</a>
+				</nav>
 			)
 		}
 
@@ -246,14 +250,24 @@ const isLoggedIn = !!Astro.locals.user;
 		top: calc(env(safe-area-inset-top, 0px) + 10px);
 		right: 12px;
 		z-index: 60;
-		padding: 6px 12px;
+		display: flex;
+		padding: 3px;
 		font-size: 12px;
 		border-radius: 999px;
-		text-decoration: none;
-		color: #fff;
 		background: rgb(0 0 0 / 0.5);
 		border: 1px solid rgb(255 255 255 / 0.14);
 		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);
+	}
+
+	.admin-escape a {
+		padding: 4px 10px;
+		border-radius: 999px;
+		color: #fff;
+		text-decoration: none;
+	}
+
+	.admin-escape a:first-child {
+		background: rgb(255 255 255 / 0.14);
 	}
 </style>

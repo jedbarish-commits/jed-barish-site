@@ -15,8 +15,8 @@ const { entries: all, cacheHint } = await getEmDashCollection("photos", {
 // Imported photos were all published today but taken over many years, so
 // published_at says nothing useful about ordering. Sort on taken_at.
 all.sort((a, b) => {
-	const at = (e: { data: Record<string, unknown> }) => {
-		const v = (e.data.taken_at ?? e.data.publishedAt) as Date | string | null;
+	const at = (e: { data: { taken_at?: Date | string | null; publishedAt?: Date | null } }) => {
+		const v = e.data.taken_at ?? e.data.publishedAt;
 		return v ? new Date(v).getTime() : 0;
 	};
 	return at(b) - at(a);

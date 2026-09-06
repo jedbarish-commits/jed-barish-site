@@ -10,6 +10,7 @@ import { Image, PortableText } from "emdash/ui";
 import MobileShell from "../../layouts/MobileShell.astro";
 import Reactions from "../../components/Reactions.astro";
 import { titleEchoesCaption } from "../../utils/text";
+import { splitVimeoRef, vimeoEmbedUrl, youtubeEmbedUrl } from "../../utils/video-links";
 import { resolveBlogSiteIdentity } from "../../utils/site-identity";
 
 const slug = decodeSlug(Astro.params.slug);
@@ -61,6 +62,13 @@ const tags = post.data.terms?.tag ?? [];
 // One video per page, so the iframe is rendered up front rather than behind a
 // facade — the visitor came here to watch it.
 const youtubeId = post.data.youtube_id ?? null;
+const vimeoRef = post.data.vimeo_id ?? null;
+const vimeo = vimeoRef ? splitVimeoRef(vimeoRef) : null;
+
+// Only web links become buttons.
+const ctaUrl =
+	post.data.cta_url && /^https?:\/\//i.test(post.data.cta_url) ? post.data.cta_url : null;
+const transcript = post.data.transcript?.trim() || null;
 
 // Self-hosted video (an Instagram import) is served by our range-capable
 // endpoint; EmDash's media route ignores Range, which breaks seeking on
@@ -71,12 +79,6 @@ const videoKey =
 	videoFile?.id;
 const videoSrc =
 	typeof videoKey === "string" ? `/api/video/${videoKey}` : null;
-const embedParams = new URLSearchParams({
-	playsinline: "1",
-	rel: "0",
-	modestbranding: "1",
-	cc_load_policy: "1",
-});
 
 const { entries: recentPosts } = await getEmDashCollection("posts", {
 	orderBy: { published_at: "desc" },
@@ -124,10 +126,18 @@ const publishDate =
 					/>
 				) : youtubeId ? (
 					<iframe
-						src={`https://www.youtube-nocookie.com/embed/${youtubeId}?${embedParams}`}
+						src={youtubeEmbedUrl(youtubeId)}
 						title={post.data.title}
 						loading="lazy"
 						allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share"
+						allowfullscreen
+					/>
+				) : vimeoRef ? (
+					<iframe
+						src={vimeoEmbedUrl(vimeoRef)}
+						title={post.data.title}
+						loading="lazy"
+						allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
 						allowfullscreen
 					/>
 				) : post.data.featured_image ? (
@@ -161,6 +171,14 @@ const publishDate =
 					</p>
 				)
 			}
+			{
+				ctaUrl && (
+					<a class="cta" href={ctaUrl} target="_blank" rel="noopener noreferrer">
+						{post.data.cta_label || "Learn more"}
+						<span aria-hidden="true">↗</span>
+					</a>
+				)
+			}
 		</header>
 
 		{
@@ -168,6 +186,15 @@ const publishDate =
 				<div class="body">
 					<PortableText value={post.data.content} />
 				</div>
+			)
+		}
+
+		{
+			transcript && (
+				<details class="transcript">
+					<summary>Transcript</summary>
+					<p>{transcript}</p>
+				</details>
 			)
 		}
 
@@ -192,6 +219,18 @@ const publishDate =
 					rel="noopener noreferrer"
 				>
 					Watch on YouTube
+				</a>
+			)
+		}
+		{
+			vimeo && (
+				<a
+					class="yt-link"
+					href={`https://vimeo.com/${vimeo.id}${vimeo.hash ? `/${vimeo.hash}` : ""}`}
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					Watch on Vimeo
 				</a>
 			)
 		}
@@ -307,6 +346,44 @@ const publishDate =
 		font-size: 1rem;
 		line-height: 1.55;
 		color: rgb(255 255 255 / 0.72);
+	}
+
+	.cta {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: var(--spacing-4);
+		padding: 10px 18px;
+		border-radius: 999px;
+		background: #fff;
+		color: #111;
+		font-size: 0.875rem;
+		font-weight: 600;
+		text-decoration: none;
+	}
+
+	.transcript {
+		margin-top: var(--spacing-6);
+		border-top: 1px solid rgb(255 255 255 / 0.1);
+		padding-top: var(--spacing-4);
+	}
+
+	.transcript summary {
+		cursor: pointer;
+		font-size: 0.6875rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: var(--tracking-wider);
+		color: rgb(255 255 255 / 0.42);
+	}
+
+	.transcript p {
+		margin: var(--spacing-3) 0 0;
+		font-size: 0.9375rem;
+		line-height: 1.6;
+		color: rgb(255 255 255 / 0.78);
+		/* Transcripts are typed with their own line breaks; keep them. */
+		white-space: pre-wrap;
 	}
 
 	.body {

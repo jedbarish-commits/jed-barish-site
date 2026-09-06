@@ -27,10 +27,10 @@ type FeedItem =
 // A photo's real date is when it was taken, which for an imported back
 // catalogue is years before it was published here. Sort on that, falling back
 // to publish time for anything without it.
-const when = (entry: { data: Record<string, unknown> }) => {
-	const taken = entry.data.taken_at as Date | string | null | undefined;
-	const published = entry.data.publishedAt as Date | null | undefined;
-	const value = taken ?? published;
+const when = (entry: {
+	data: { taken_at?: Date | string | null; publishedAt?: Date | null };
+}) => {
+	const value = entry.data.taken_at ?? entry.data.publishedAt;
 	return value ? new Date(value).getTime() : 0;
 };
 
@@ -80,7 +80,10 @@ const formatDate = (value: Date | string | null | undefined) =>
 						<VideoPanel
 							title={item.entry.data.title ?? "Untitled"}
 							youtubeId={item.entry.data.youtube_id ?? ""}
+							vimeoRef={item.entry.data.vimeo_id}
 							videoSrc={fileSrc(item.entry.data.video_file)}
+							ctaUrl={item.entry.data.cta_url}
+							ctaLabel={item.entry.data.cta_label}
 							featuredImage={item.entry.data.featured_image}
 							excerpt={item.entry.data.excerpt}
 							href={`/videos/${item.entry.id}`}
@@ -159,6 +162,7 @@ const formatDate = (value: Date | string | null | undefined) =>
 
 <script>
 	import { bindSnapKeys } from "../utils/snap-keys";
+	import { vimeoEmbedUrl, youtubeEmbedUrl } from "../utils/video-links";
 
 	// Facade player: the YouTube iframe is only created on tap, and torn back
 	// down once its panel scrolls out of view so audio never trails behind the
@@ -171,8 +175,9 @@ const formatDate = (value: Date | string | null | undefined) =>
 		function activate(player: HTMLElement) {
 			if (player.querySelector("iframe, video")) return;
 			const videoId = player.dataset.videoId;
+			const vimeo = player.dataset.vimeo;
 			const videoSrc = player.dataset.videoSrc;
-			if (!videoId && !videoSrc) return;
+			if (!videoId && !vimeo && !videoSrc) return;
 
 			const trigger = player.querySelector<HTMLElement>("[data-play]");
 			let element: HTMLElement;
@@ -189,19 +194,14 @@ const formatDate = (value: Date | string | null | undefined) =>
 				video.preload = "auto";
 				element = video;
 			} else {
-				const params = new URLSearchParams({
-					autoplay: "1",
-					playsinline: "1",
-					rel: "0",
-					modestbranding: "1",
-					// Captions on by default.
-					cc_load_policy: "1",
-				});
+				// Hosted embeds, captions on by default for both providers.
 				const iframe = document.createElement("iframe");
-				iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?${params}`;
+				iframe.src = vimeo
+					? vimeoEmbedUrl(vimeo, { autoplay: "1" })
+					: youtubeEmbedUrl(videoId!, { autoplay: "1" });
 				iframe.title = player.dataset.title ?? "Video";
 				iframe.allow =
-					"accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share";
+					"accelerometer; autoplay; encrypted-media; fullscreen; gyroscope; picture-in-picture; web-share";
 				iframe.allowFullscreen = true;
 				element = iframe;
 			}

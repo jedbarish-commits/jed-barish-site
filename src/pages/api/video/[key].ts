@@ -16,7 +16,7 @@ export const prerender = false;
  */
 
 function bucket(): R2Bucket | null {
-	const binding = (env as Record<string, unknown> | undefined)?.MEDIA;
+	const binding = (env as unknown as { MEDIA?: unknown } | undefined)?.MEDIA;
 	return binding && typeof binding === "object" ? (binding as R2Bucket) : null;
 }
 

@@ -1,0 +1,1283 @@
+---
+import { getTaxonomyTerms } from "emdash";
+import MobileShell from "../layouts/MobileShell.astro";
+
+/**
+ * Studio — posting from a phone without opening the CMS admin.
+ *
+ * Paste a YouTube or Vimeo link (or pick a file), and a video or photo is
+ * live in about fifteen seconds. It runs as the signed-in EmDash user: the
+ * page is only rendered for a session, and every write goes straight from the
+ * browser to EmDash's own API with that session, so EmDash's permission
+ * checks apply and signing out ends access. No second credential exists.
+ */
+
+const user = Astro.locals.user;
+if (!user) {
+	return Astro.redirect("/_emdash/admin/login?redirect=/studio");
+}
+
+// Flatten the category tree — the picker is a row of chips, not an outline.
+type Term = { slug: string; label: string; children?: Term[] };
+const flatten = (terms: Term[], depth = 0): { slug: string; label: string }[] =>
+	terms.flatMap((t) => [
+		{ slug: t.slug, label: depth ? `${"· ".repeat(depth)}${t.label}` : t.label },
+		...flatten(t.children ?? [], depth + 1),
+	]);
+
+const [categoryTerms, tagTerms] = await Promise.all([
+	getTaxonomyTerms("category"),
+	getTaxonomyTerms("tag"),
+]);
+const categories = flatten(categoryTerms as unknown as Term[]);
+const tags = (tagTerms as unknown as Term[]).map((t) => ({ slug: t.slug, label: t.label }));
+
+const displayName = user.name || user.email;
+---
+
+<MobileShell title="Studio" robots="noindex, nofollow" adminEscape={false}>
+	<div class="studio" data-studio data-tags={JSON.stringify(tags)}>
+		<header class="head">
+			<h1>Studio</h1>
+			<p class="who">
+				<a href="/_emdash/admin">{displayName}</a>
+				<span aria-hidden="true">·</span>
+				<button type="button" class="linkish" data-signout>Sign out</button>
+			</p>
+		</header>
+
+		<div class="seg" role="tablist" aria-label="What to post">
+			<button type="button" role="tab" aria-selected="true" data-mode="video">Video</button>
+			<button type="button" role="tab" aria-selected="false" data-mode="photo">Photo</button>
+		</div>
+
+		<form class="composer" data-form novalidate>
+			<!-- Video source -->
+			<section data-pane="video">
+				<label class="field">
+					<span class="label">YouTube or Vimeo link</span>
+					<input
+						type="url"
+						name="link"
+						inputmode="url"
+						autocomplete="off"
+						autocapitalize="off"
+						spellcheck="false"
+						placeholder="https://youtu.be/… or https://vimeo.com/…"
+						data-link
+					/>
+				</label>
+				<p class="status" data-link-status aria-live="polite"></p>
+
+				<div class="or"><span>or</span></div>
+
+				<label class="field">
+					<span class="label">Upload a video file</span>
+					<input type="file" name="videoFile" accept="video/mp4,video/quicktime,video/webm" data-video-file />
+					<span class="hint">MP4 up to 50 MB. A frame from the file becomes the thumbnail.</span>
+				</label>
+			</section>
+
+			<!-- Photo source -->
+			<section data-pane="photo" hidden>
+				<label class="field">
+					<span class="label">Photo</span>
+					<input type="file" name="photoFile" accept="image/*" data-photo-file />
+					<span class="hint">Anything from the camera roll. Large photos are resized before upload.</span>
+				</label>
+
+				<div class="or"><span>or</span></div>
+
+				<label class="field">
+					<span class="label">Image URL</span>
+					<input
+						type="url"
+						name="photoUrl"
+						inputmode="url"
+						autocomplete="off"
+						autocapitalize="off"
+						spellcheck="false"
+						placeholder="https://…/photo.jpg"
+						data-photo-url
+					/>
+				</label>
+			</section>
+
+			<div class="preview" data-preview hidden>
+				<img alt="" data-preview-img />
+				<video muted playsinline data-preview-video hidden></video>
+			</div>
+
+			<label class="field">
+				<span class="label">Title</span>
+				<input type="text" name="title" autocomplete="off" data-title required />
+			</label>
+
+			<label class="field">
+				<span class="label">Caption</span>
+				<textarea name="caption" rows="4" data-caption></textarea>
+			</label>
+
+			<!-- Photo-only details -->
+			<div data-pane="photo" hidden>
+				<label class="field">
+					<span class="label">Location</span>
+					<input type="text" name="location" autocomplete="off" data-location />
+				</label>
+				<label class="field">
+					<span class="label">Date taken</span>
+					<input type="date" name="takenAt" data-taken-at />
+				</label>
+			</div>
+
+			<!-- Video-only details -->
+			<div data-pane="video">
+				{
+					categories.length > 0 && (
+						<fieldset class="field chips-field">
+							<legend class="label">Category</legend>
+							<div class="chips" data-categories>
+								{categories.map((c) => (
+									<button type="button" class="chip" data-slug={c.slug} aria-pressed="false">
+										{c.label}
+									</button>
+								))}
+								<button type="button" class="chip chip-add" data-add-category>+ New</button>
+							</div>
+						</fieldset>
+					)
+				}
+				{
+					categories.length === 0 && (
+						<fieldset class="field chips-field">
+							<legend class="label">Category</legend>
+							<div class="chips" data-categories>
+								<button type="button" class="chip chip-add" data-add-category>+ New category</button>
+							</div>
+						</fieldset>
+					)
+				}
+
+				<button type="button" class="linkish more-toggle" data-more-toggle aria-expanded="false">
+					More details
+				</button>
+
+				<div class="more" data-more hidden>
+					<div class="field">
+						<span class="label" id="tags-label">Tags</span>
+						<div class="tags" data-tags-box>
+							<input
+								type="text"
+								autocomplete="off"
+								autocapitalize="off"
+								placeholder="Type a tag, press Enter"
+								aria-labelledby="tags-label"
+								list="known-tags"
+								data-tag-input
+							/>
+						</div>
+						<datalist id="known-tags">
+							{tags.map((t) => <option value={t.label} />)}
+						</datalist>
+						<span class="hint">Tags connect videos to each other. Picking an existing one beats a near-match.</span>
+					</div>
+
+					<label class="field">
+						<span class="label">Link (optional)</span>
+						<input type="url" name="ctaUrl" inputmode="url" autocapitalize="off" placeholder="https://…" data-cta-url />
+						<span class="hint">Shows as a button on the video — a sponsor, an event, the full-length cut.</span>
+					</label>
+
+					<label class="field">
+						<span class="label">Button label</span>
+						<input type="text" name="ctaLabel" placeholder="Learn more" maxlength="40" data-cta-label />
+					</label>
+
+					<label class="field">
+						<span class="label">Transcript / captions</span>
+						<textarea name="transcript" rows="6" data-transcript></textarea>
+						<span class="hint">Searchable on the site, so this is worth filling in.</span>
+					</label>
+				</div>
+			</div>
+
+			<div class="actions">
+				<button type="submit" class="btn primary" data-publish>Publish</button>
+				<button type="button" class="btn" data-draft>Draft</button>
+			</div>
+			<p class="foot" data-foot aria-live="polite"></p>
+			<div class="progress" data-progress hidden><i></i></div>
+		</form>
+
+		<div class="done" data-done hidden>
+			<h2 data-done-title>Published</h2>
+			<p data-done-text></p>
+			<div class="actions">
+				<a class="btn primary" data-done-link href="/">View</a>
+				<button type="button" class="btn" data-again>Post another</button>
+			</div>
+		</div>
+	</div>
+</MobileShell>
+
+<style>
+	.studio {
+		padding: calc(env(safe-area-inset-top, 0px) + var(--spacing-5)) var(--spacing-5) 130px;
+	}
+
+	.head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: var(--spacing-3);
+		margin-bottom: var(--spacing-5);
+	}
+
+	.head h1 {
+		font-size: 1.75rem;
+		font-weight: 700;
+		letter-spacing: var(--tracking-tight);
+		margin: 0;
+	}
+
+	.who {
+		display: flex;
+		gap: 6px;
+		margin: 0;
+		font-size: 0.8125rem;
+		color: rgb(255 255 255 / 0.55);
+	}
+
+	.who a {
+		color: inherit;
+	}
+
+	.linkish {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: rgb(255 255 255 / 0.55);
+		font: inherit;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		cursor: pointer;
+	}
+
+	.seg {
+		display: inline-flex;
+		padding: 3px;
+		border-radius: 999px;
+		background: rgb(255 255 255 / 0.08);
+		margin-bottom: var(--spacing-6);
+	}
+
+	.seg button {
+		padding: 8px 22px;
+		border: 0;
+		border-radius: 999px;
+		background: none;
+		color: rgb(255 255 255 / 0.6);
+		font: inherit;
+		font-size: 0.9375rem;
+		font-weight: 500;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.seg button[aria-selected="true"] {
+		background: rgb(255 255 255 / 0.14);
+		color: #fff;
+	}
+
+	/* Several containers below set display:flex, which would beat the UA's
+	   [hidden] rule and un-hide the inactive pane. */
+	.studio [hidden] {
+		display: none !important;
+	}
+
+	.composer {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-5);
+	}
+
+	.composer section,
+	.composer [data-pane] {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-5);
+	}
+
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		min-width: 0;
+		border: 0;
+		padding: 0;
+		margin: 0;
+	}
+
+	.label {
+		font-size: 0.9375rem;
+		font-weight: 500;
+		color: rgb(255 255 255 / 0.9);
+	}
+
+	.hint {
+		font-size: 0.8125rem;
+		line-height: 1.45;
+		color: rgb(255 255 255 / 0.5);
+	}
+
+	input[type="text"],
+	input[type="url"],
+	input[type="date"],
+	textarea {
+		width: 100%;
+		padding: 14px 16px;
+		border-radius: 14px;
+		border: 1px solid rgb(255 255 255 / 0.16);
+		background: rgb(255 255 255 / 0.03);
+		color: #fff;
+		font: inherit;
+		/* 16px is the floor below which iOS zooms the page on focus. */
+		font-size: 1rem;
+		line-height: 1.4;
+		-webkit-appearance: none;
+		appearance: none;
+	}
+
+	input[type="date"] {
+		min-height: 52px;
+		color-scheme: dark;
+	}
+
+	textarea {
+		resize: vertical;
+	}
+
+	input:focus-visible,
+	textarea:focus-visible {
+		outline: 2px solid var(--color-brand, #4d9fff);
+		outline-offset: 0;
+		border-color: transparent;
+	}
+
+	input::placeholder,
+	textarea::placeholder {
+		color: rgb(255 255 255 / 0.32);
+	}
+
+	input[type="file"] {
+		font-size: 0.9375rem;
+		color: rgb(255 255 255 / 0.7);
+	}
+
+	input[type="file"]::file-selector-button {
+		margin-right: 12px;
+		padding: 9px 14px;
+		border-radius: 999px;
+		border: 1px solid rgb(255 255 255 / 0.2);
+		background: rgb(255 255 255 / 0.08);
+		color: #fff;
+		font: inherit;
+		font-size: 0.875rem;
+	}
+
+	.status {
+		margin: -8px 0 0;
+		min-height: 1.2em;
+		font-size: 0.8125rem;
+		line-height: 1.45;
+		color: rgb(255 255 255 / 0.55);
+	}
+
+	.status.warn {
+		color: #ffb86b;
+	}
+
+	.status.ok {
+		color: #8fd694;
+	}
+
+	.or {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		font-size: 0.75rem;
+		text-transform: uppercase;
+		letter-spacing: var(--tracking-wide);
+		color: rgb(255 255 255 / 0.35);
+	}
+
+	.or::before,
+	.or::after {
+		content: "";
+		flex: 1;
+		height: 1px;
+		background: rgb(255 255 255 / 0.1);
+	}
+
+	.preview {
+		border-radius: 14px;
+		overflow: hidden;
+		background: #000;
+		display: flex;
+		justify-content: center;
+	}
+
+	.preview img,
+	.preview video {
+		max-width: 100%;
+		max-height: 46dvh;
+		display: block;
+		object-fit: contain;
+	}
+
+	.chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	.chip {
+		padding: 9px 16px;
+		border-radius: 999px;
+		border: 1px solid rgb(255 255 255 / 0.18);
+		background: none;
+		color: rgb(255 255 255 / 0.85);
+		font: inherit;
+		font-size: 0.9375rem;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.chip[aria-pressed="true"] {
+		background: rgb(255 255 255 / 0.16);
+		border-color: rgb(255 255 255 / 0.5);
+		color: #fff;
+	}
+
+	.chip-add {
+		border-style: dashed;
+		color: rgb(255 255 255 / 0.55);
+	}
+
+	.more-toggle {
+		align-self: flex-start;
+		font-size: 0.9375rem;
+	}
+
+	.more {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-5);
+	}
+
+	.tags {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 6px 6px 8px;
+		border-radius: 14px;
+		border: 1px solid rgb(255 255 255 / 0.16);
+		background: rgb(255 255 255 / 0.03);
+	}
+
+	.tags:focus-within {
+		outline: 2px solid var(--color-brand, #4d9fff);
+		border-color: transparent;
+	}
+
+	.tags input {
+		flex: 1 1 140px;
+		min-width: 0;
+		padding: 8px 8px;
+		border: 0;
+		background: none;
+	}
+
+	.tags input:focus-visible {
+		outline: none;
+	}
+
+	.tag {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 6px 6px 12px;
+		border-radius: 999px;
+		background: rgb(255 255 255 / 0.12);
+		font-size: 0.875rem;
+	}
+
+	.tag button {
+		width: 22px;
+		height: 22px;
+		border-radius: 50%;
+		border: 0;
+		background: rgb(255 255 255 / 0.12);
+		color: #fff;
+		font: inherit;
+		line-height: 1;
+		cursor: pointer;
+	}
+
+	.actions {
+		display: flex;
+		gap: 10px;
+		margin-top: var(--spacing-2);
+	}
+
+	.btn {
+		flex: 0 0 auto;
+		padding: 15px 24px;
+		border-radius: 14px;
+		border: 1px solid rgb(255 255 255 / 0.2);
+		background: none;
+		color: #fff;
+		font: inherit;
+		font-size: 1rem;
+		font-weight: 500;
+		text-align: center;
+		text-decoration: none;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.btn.primary {
+		flex: 1 1 auto;
+		background: var(--color-brand, #0066cc);
+		border-color: transparent;
+	}
+
+	.btn:disabled {
+		opacity: 0.45;
+		cursor: default;
+	}
+
+	.foot {
+		margin: 0;
+		min-height: 1.2em;
+		font-size: 0.8125rem;
+		line-height: 1.45;
+		color: rgb(255 255 255 / 0.5);
+	}
+
+	.foot.error {
+		color: #ff8a80;
+	}
+
+	.progress {
+		height: 3px;
+		border-radius: 3px;
+		background: rgb(255 255 255 / 0.1);
+		overflow: hidden;
+	}
+
+	.progress i {
+		display: block;
+		height: 100%;
+		width: 0;
+		background: var(--color-brand, #0066cc);
+		transition: width 120ms linear;
+	}
+
+	.done h2 {
+		font-size: 1.5rem;
+		font-weight: 700;
+		letter-spacing: var(--tracking-tight);
+		margin: var(--spacing-8) 0 var(--spacing-2);
+	}
+
+	.done p {
+		margin: 0 0 var(--spacing-5);
+		color: rgb(255 255 255 / 0.66);
+		line-height: 1.5;
+	}
+</style>
+
+<script>
+	import { parseVideoLink, watchUrl, vimeoRef, type VideoLink } from "../utils/video-links";
+	import type { Lookup } from "./api/studio/oembed";
+
+	const root = document.querySelector<HTMLElement>("[data-studio]");
+	if (root) boot(root);
+
+	function boot(root: HTMLElement) {
+		const q = <T extends HTMLElement>(sel: string) => root.querySelector<T>(sel)!;
+		const form = q<HTMLFormElement>("[data-form]");
+		const link = q<HTMLInputElement>("[data-link]");
+		const linkStatus = q<HTMLElement>("[data-link-status]");
+		const videoFile = q<HTMLInputElement>("[data-video-file]");
+		const photoFile = q<HTMLInputElement>("[data-photo-file]");
+		const photoUrl = q<HTMLInputElement>("[data-photo-url]");
+		const preview = q<HTMLElement>("[data-preview]");
+		const previewImg = q<HTMLImageElement>("[data-preview-img]");
+		const previewVideo = q<HTMLVideoElement>("[data-preview-video]");
+		const title = q<HTMLInputElement>("[data-title]");
+		const caption = q<HTMLTextAreaElement>("[data-caption]");
+		const location = q<HTMLInputElement>("[data-location]");
+		const takenAt = q<HTMLInputElement>("[data-taken-at]");
+		const ctaUrl = q<HTMLInputElement>("[data-cta-url]");
+		const ctaLabel = q<HTMLInputElement>("[data-cta-label]");
+		const transcript = q<HTMLTextAreaElement>("[data-transcript]");
+		const tagInput = q<HTMLInputElement>("[data-tag-input]");
+		const tagsBox = q<HTMLElement>("[data-tags-box]");
+		const categoriesBox = q<HTMLElement>("[data-categories]");
+		const publishBtn = q<HTMLButtonElement>("[data-publish]");
+		const draftBtn = q<HTMLButtonElement>("[data-draft]");
+		const foot = q<HTMLElement>("[data-foot]");
+		const progress = q<HTMLElement>("[data-progress]");
+		const progressBar = progress.querySelector<HTMLElement>("i")!;
+		const done = q<HTMLElement>("[data-done]");
+
+		type Mode = "video" | "photo";
+		let mode: Mode = "video";
+		let lookup: Lookup | null = null;
+		let parsed: VideoLink | null = null;
+		let titleTouched = false;
+		let captionTouched = false;
+		let busy = false;
+		const chosenTags: string[] = [];
+		const knownTags: { slug: string; label: string }[] = JSON.parse(root.dataset.tags || "[]");
+
+		// ---------- API ----------
+
+		// EmDash rejects cookie-authenticated writes without this header; it is
+		// what stops a cross-origin page making the same request.
+		async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+			const headers = new Headers(init.headers);
+			headers.set("X-EmDash-Request", "1");
+			const res = await fetch(path, { credentials: "same-origin", ...init, headers });
+			const body = (await res.json().catch(() => null)) as
+				| { success?: boolean; data?: T; error?: { message?: string } | string }
+				| null;
+			if (!res.ok || body?.success === false) {
+				const err = body?.error;
+				const message =
+					typeof err === "string" ? err : (err?.message ?? `Request failed (${res.status})`);
+				throw new Error(message);
+			}
+			return (body?.data ?? body) as T;
+		}
+
+		function uploadMedia(
+			blob: Blob,
+			filename: string,
+			onProgress?: (fraction: number) => void,
+		): Promise<{ id: string; url: string }> {
+			return new Promise((resolve, reject) => {
+				const body = new FormData();
+				body.append("file", blob, filename);
+				const xhr = new XMLHttpRequest();
+				xhr.open("POST", "/_emdash/api/media");
+				xhr.setRequestHeader("X-EmDash-Request", "1");
+				xhr.upload.onprogress = (e) => {
+					if (e.lengthComputable) onProgress?.(e.loaded / e.total);
+				};
+				xhr.onload = () => {
+					try {
+						const json = JSON.parse(xhr.responseText);
+						const item = json?.data?.item;
+						if (xhr.status < 300 && item?.id) resolve(item);
+						else reject(new Error(json?.error?.message ?? `Upload failed (${xhr.status})`));
+					} catch {
+						reject(new Error(`Upload failed (${xhr.status})`));
+					}
+				};
+				xhr.onerror = () => reject(new Error("Upload failed — check the connection"));
+				xhr.send(body);
+			});
+		}
+
+		async function setAlt(mediaId: string, alt: string) {
+			await api(`/_emdash/api/media/${mediaId}`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ alt }),
+			}).catch(() => {
+				/* alt is nice to have; the upload already succeeded */
+			});
+		}
+
+		/** Image bytes via our fetcher — CDNs don't send CORS headers. */
+		async function fetchImage(url: string): Promise<Blob> {
+			const res = await fetch(`/api/studio/fetch-image?url=${encodeURIComponent(url)}`);
+			if (!res.ok) throw new Error(await res.text());
+			return res.blob();
+		}
+
+		// ---------- UI helpers ----------
+
+		const setFoot = (text: string, error = false) => {
+			foot.textContent = text;
+			foot.classList.toggle("error", error);
+		};
+
+		const setLinkStatus = (text: string, tone: "" | "warn" | "ok" = "") => {
+			linkStatus.textContent = text;
+			linkStatus.className = `status ${tone}`.trim();
+		};
+
+		const showPreview = (kind: "image" | "video" | null, src?: string) => {
+			previewImg.hidden = kind !== "image";
+			previewVideo.hidden = kind !== "video";
+			preview.hidden = !kind;
+			if (kind === "image" && src) previewImg.src = src;
+			if (kind === "video" && src) previewVideo.src = src;
+			if (kind !== "video") previewVideo.removeAttribute("src");
+		};
+
+		const setProgress = (fraction: number | null) => {
+			progress.hidden = fraction === null;
+			progressBar.style.width = `${Math.round((fraction ?? 0) * 100)}%`;
+		};
+
+		const fmtDuration = (s: number) =>
+			`${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+
+		function ready(): { ok: boolean; why: string } {
+			const hasTitle = title.value.trim().length > 0;
+			if (mode === "video") {
+				const hasSource = !!parsed || !!videoFile.files?.[0];
+				if (hasSource && hasTitle) return { ok: true, why: "" };
+				const needs = [!hasSource && "a video link or file", !hasTitle && "a title"].filter(Boolean);
+				return { ok: false, why: `Needs ${needs.join(" and ")}.` };
+			}
+			const hasSource = !!photoFile.files?.[0] || photoUrl.value.trim().length > 0;
+			if (hasSource && hasTitle) return { ok: true, why: "" };
+			const needs = [!hasSource && "a photo or image URL", !hasTitle && "a title"].filter(Boolean);
+			return { ok: false, why: `Needs ${needs.join(" and ")}.` };
+		}
+
+		function render() {
+			const r = ready();
+			publishBtn.disabled = busy || !r.ok;
+			draftBtn.disabled = busy || !r.ok;
+			if (!busy) setFoot(r.ok ? "" : r.why);
+		}
+
+		function setMode(next: Mode) {
+			mode = next;
+			for (const tab of root.querySelectorAll<HTMLButtonElement>("[data-mode]")) {
+				tab.setAttribute("aria-selected", String(tab.dataset.mode === next));
+			}
+			for (const pane of root.querySelectorAll<HTMLElement>("[data-pane]")) {
+				pane.hidden = pane.dataset.pane !== next;
+			}
+			showPreview(null);
+			render();
+		}
+
+		// ---------- Video link lookup ----------
+
+		let seq = 0;
+		let timer: number | undefined;
+
+		async function runLookup() {
+			const value = link.value.trim();
+			const mine = ++seq;
+			lookup = null;
+			parsed = parseVideoLink(value);
+
+			if (!value) {
+				setLinkStatus("");
+				showPreview(null);
+				render();
+				return;
+			}
+			if (!parsed) {
+				setLinkStatus("That doesn't look like a YouTube or Vimeo link.", "warn");
+				showPreview(null);
+				render();
+				return;
+			}
+
+			setLinkStatus("Looking up…");
+			render();
+			try {
+				const data = await api<Lookup>(`/api/studio/oembed?url=${encodeURIComponent(value)}`);
+				// A newer paste always wins the race.
+				if (mine !== seq) return;
+				lookup = data;
+
+				// Prefill only what the editor hasn't typed: re-pasting to correct
+				// the wrong clip must not discard wording already written.
+				if (!titleTouched && data.title) title.value = data.title;
+				if (!captionTouched && data.description) caption.value = data.description;
+
+				const bits = [data.provider === "youtube" ? "YouTube" : "Vimeo"];
+				if (data.duration) bits.push(fmtDuration(data.duration));
+				if (data.width && data.height) bits.push(`${data.width}×${data.height}`);
+				if (data.limited) {
+					setLinkStatus(
+						`${bits[0]} won't describe this one — an embed-only video, probably. Type the title yourself; it still publishes.`,
+						"warn",
+					);
+				} else if (data.vertical) {
+					setLinkStatus(`${bits.join(" · ")} · vertical — it'll sit letterboxed in the player.`, "warn");
+				} else {
+					setLinkStatus(bits.join(" · "), "ok");
+				}
+				if (data.poster) showPreview("image", `/api/studio/fetch-image?url=${encodeURIComponent(data.poster)}`);
+				else showPreview(null);
+			} catch (error) {
+				if (mine !== seq) return;
+				setLinkStatus((error as Error).message || "Lookup failed.", "warn");
+			}
+			render();
+		}
+
+		link.addEventListener("input", () => {
+			window.clearTimeout(timer);
+			// Typing a link by hand mustn't fire a request per keystroke.
+			timer = window.setTimeout(runLookup, 450);
+		});
+		link.addEventListener("paste", () => {
+			window.clearTimeout(timer);
+			timer = window.setTimeout(runLookup, 30);
+		});
+
+		// ---------- Local files ----------
+
+		videoFile.addEventListener("change", () => {
+			const file = videoFile.files?.[0];
+			if (!file) {
+				showPreview(null);
+				render();
+				return;
+			}
+			// A file supersedes a link — one source per post.
+			link.value = "";
+			parsed = null;
+			lookup = null;
+			setLinkStatus("");
+			showPreview("video", URL.createObjectURL(file));
+			if (!titleTouched && !title.value) title.value = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ");
+			if (file.size > 50 * 1024 * 1024) setLinkStatus("That file is over 50 MB — EmDash will refuse it.", "warn");
+			render();
+		});
+
+		photoFile.addEventListener("change", () => {
+			const file = photoFile.files?.[0];
+			if (!file) {
+				showPreview(null);
+				render();
+				return;
+			}
+			photoUrl.value = "";
+			showPreview("image", URL.createObjectURL(file));
+			if (!takenAt.value) takenAt.value = toDateInput(new Date(file.lastModified || Date.now()));
+			render();
+		});
+
+		photoUrl.addEventListener("input", () => {
+			const value = photoUrl.value.trim();
+			if (value) {
+				if (photoFile.files?.length) photoFile.value = "";
+				if (/^https:\/\//i.test(value)) showPreview("image", `/api/studio/fetch-image?url=${encodeURIComponent(value)}`);
+			} else {
+				showPreview(null);
+			}
+			render();
+		});
+
+		const toDateInput = (d: Date) =>
+			`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+		/** Grab a frame ~half a second in, as the poster for a self-hosted file. */
+		function frameFrom(file: File): Promise<Blob | null> {
+			return new Promise((resolve) => {
+				const url = URL.createObjectURL(file);
+				const v = document.createElement("video");
+				v.muted = true;
+				v.playsInline = true;
+				v.preload = "auto";
+				v.src = url;
+				let settled = false;
+				const finish = (blob: Blob | null) => {
+					if (settled) return;
+					settled = true;
+					URL.revokeObjectURL(url);
+					resolve(blob);
+				};
+				const timeout = window.setTimeout(() => finish(null), 10000);
+				v.onerror = () => finish(null);
+				v.onloadedmetadata = () => {
+					v.currentTime = Math.min(0.5, (v.duration || 1) / 2);
+				};
+				v.onseeked = () => {
+					try {
+						const scale = Math.min(1, 1280 / (v.videoWidth || 1280));
+						const c = document.createElement("canvas");
+						c.width = Math.round(v.videoWidth * scale);
+						c.height = Math.round(v.videoHeight * scale);
+						c.getContext("2d")!.drawImage(v, 0, 0, c.width, c.height);
+						c.toBlob((b) => {
+							window.clearTimeout(timeout);
+							finish(b);
+						}, "image/jpeg", 0.86);
+					} catch {
+						finish(null);
+					}
+				};
+			});
+		}
+
+		const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
+
+		/**
+		 * Phones hand over 12-megapixel HEICs. EmDash accepts neither the size
+		 * nor the format gladly, so anything big or unusual is redrawn as a
+		 * 2048px JPEG before upload.
+		 */
+		async function normalisePhoto(blob: Blob, name: string): Promise<{ blob: Blob; name: string }> {
+			const MAX = 2048;
+			const reencode = !IMAGE_TYPES.has(blob.type);
+			let bitmap: ImageBitmap;
+			try {
+				bitmap = await createImageBitmap(blob);
+			} catch {
+				if (reencode) throw new Error("That image can't be read in this browser.");
+				return { blob, name };
+			}
+			const long = Math.max(bitmap.width, bitmap.height);
+			if (!reencode && long <= MAX) {
+				bitmap.close();
+				return { blob, name };
+			}
+			const scale = Math.min(1, MAX / long);
+			const c = document.createElement("canvas");
+			c.width = Math.round(bitmap.width * scale);
+			c.height = Math.round(bitmap.height * scale);
+			c.getContext("2d")!.drawImage(bitmap, 0, 0, c.width, c.height);
+			bitmap.close();
+			const out = await new Promise<Blob | null>((res) => c.toBlob(res, "image/jpeg", 0.9));
+			if (!out) throw new Error("Couldn't process that image.");
+			return { blob: out, name: name.replace(/\.[^.]+$/, "") + ".jpg" };
+		}
+
+		// ---------- Categories & tags ----------
+
+		categoriesBox.addEventListener("click", async (event) => {
+			const target = event.target as HTMLElement;
+			const chip = target.closest<HTMLButtonElement>(".chip");
+			if (!chip) return;
+
+			if (chip.hasAttribute("data-add-category")) {
+				const label = window.prompt("New category");
+				if (!label?.trim()) return;
+				chip.disabled = true;
+				try {
+					const created = await api<{ term?: { slug: string; label: string }; item?: { slug: string; label: string } }>(
+						"/_emdash/api/taxonomies/category/terms",
+						{
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ label: label.trim() }),
+						},
+					);
+					const term = created.term ?? created.item;
+					if (!term) throw new Error("No term returned");
+					const button = document.createElement("button");
+					button.type = "button";
+					button.className = "chip";
+					button.dataset.slug = term.slug;
+					button.setAttribute("aria-pressed", "true");
+					button.textContent = term.label;
+					categoriesBox.insertBefore(button, chip);
+				} catch (error) {
+					setFoot(`Couldn't add category: ${(error as Error).message}`, true);
+				} finally {
+					chip.disabled = false;
+				}
+				return;
+			}
+
+			chip.setAttribute("aria-pressed", String(chip.getAttribute("aria-pressed") !== "true"));
+		});
+
+		const selectedCategories = () =>
+			[...categoriesBox.querySelectorAll<HTMLElement>('.chip[aria-pressed="true"]')].map((c) => c.dataset.slug!);
+
+		function addTag(raw: string) {
+			const label = raw.trim().replace(/^#/, "");
+			if (!label) return;
+			if (chosenTags.some((t) => t.toLowerCase() === label.toLowerCase())) return;
+			chosenTags.push(label);
+			const pill = document.createElement("span");
+			pill.className = "tag";
+			pill.textContent = label;
+			const remove = document.createElement("button");
+			remove.type = "button";
+			remove.setAttribute("aria-label", `Remove ${label}`);
+			remove.textContent = "×";
+			remove.addEventListener("click", () => {
+				chosenTags.splice(chosenTags.indexOf(label), 1);
+				pill.remove();
+			});
+			pill.appendChild(remove);
+			tagsBox.insertBefore(pill, tagInput);
+		}
+
+		tagInput.addEventListener("keydown", (event) => {
+			if (event.key === "Enter" || event.key === ",") {
+				event.preventDefault();
+				addTag(tagInput.value);
+				tagInput.value = "";
+			} else if (event.key === "Backspace" && !tagInput.value && chosenTags.length) {
+				tagsBox.querySelector<HTMLElement>(".tag:last-of-type button")?.click();
+			}
+		});
+		tagInput.addEventListener("change", () => {
+			// Picking from the datalist fires change without a key.
+			if (tagInput.value) {
+				addTag(tagInput.value);
+				tagInput.value = "";
+			}
+		});
+
+		/** Make sure every chosen tag exists as a term, and return their slugs. */
+		async function ensureTags(): Promise<string[]> {
+			const slugs: string[] = [];
+			for (const label of chosenTags) {
+				const known = knownTags.find((t) => t.label.toLowerCase() === label.toLowerCase());
+				if (known) {
+					slugs.push(known.slug);
+					continue;
+				}
+				const created = await api<{ term?: { slug: string; label: string }; item?: { slug: string; label: string } }>(
+					"/_emdash/api/taxonomies/tag/terms",
+					{
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ label }),
+					},
+				);
+				const term = created.term ?? created.item;
+				if (!term) throw new Error(`Couldn't create tag "${label}"`);
+				knownTags.push(term);
+				slugs.push(term.slug);
+			}
+			return slugs;
+		}
+
+		// ---------- Submit ----------
+
+		const slugify = (s: string) =>
+			s
+				.toLowerCase()
+				.normalize("NFKD")
+				.replace(/[̀-ͯ]/g, "")
+				.replace(/[^a-z0-9]+/g, "-")
+				.replace(/^-+|-+$/g, "")
+				.slice(0, 80);
+
+		async function createEntry(collection: "posts" | "photos", body: Record<string, unknown>) {
+			const post = (extra: Record<string, unknown> = {}) =>
+				api<{ item: { id: string; slug: string } }>(`/_emdash/api/content/${collection}`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ ...body, ...extra }),
+				});
+			try {
+				return await post();
+			} catch (error) {
+				// Slug taken (a repeated title) — retry with a unique suffix.
+				if (!/slug/i.test((error as Error).message)) throw error;
+				const stem = slugify(String((body.data as Record<string, unknown>).title ?? "post")) || "post";
+				return post({ slug: `${stem}-${Date.now().toString(36)}` });
+			}
+		}
+
+		async function submit(publish: boolean) {
+			if (busy || !ready().ok) return;
+			busy = true;
+			render();
+			setProgress(0);
+			const step = (text: string, fraction?: number) => {
+				setFoot(text);
+				if (fraction !== undefined) setProgress(fraction);
+			};
+
+			try {
+				const titleText = title.value.trim();
+				let created: { item: { id: string; slug: string } };
+				let publishBody: Record<string, unknown> = {};
+
+				if (mode === "video") {
+					const data: Record<string, unknown> = { title: titleText };
+					if (caption.value.trim()) data.excerpt = caption.value.trim();
+					if (ctaUrl.value.trim()) data.cta_url = ctaUrl.value.trim();
+					if (ctaLabel.value.trim()) data.cta_label = ctaLabel.value.trim();
+					if (transcript.value.trim()) data.transcript = transcript.value.trim();
+
+					const file = videoFile.files?.[0];
+					if (file) {
+						step("Uploading video…", 0.02);
+						const media = await uploadMedia(file, file.name, (f) => setProgress(0.02 + f * 0.7));
+						data.video_file = media.id;
+						step("Making a thumbnail…", 0.75);
+						const frame = await frameFrom(file);
+						if (frame) {
+							const poster = await uploadMedia(frame, `${slugify(titleText) || "video"}-poster.jpg`);
+							await setAlt(poster.id, titleText);
+							data.featured_image = poster.id;
+						}
+					} else if (parsed) {
+						if (parsed.provider === "youtube") data.youtube_id = parsed.id;
+						else data.vimeo_id = vimeoRef(parsed.id, parsed.hash);
+						data.source_ref = watchUrl(parsed);
+						if (lookup?.poster) {
+							step("Saving the thumbnail…", 0.2);
+							try {
+								const blob = await fetchImage(lookup.poster);
+								const poster = await uploadMedia(blob, `${parsed.provider}-${parsed.id}.jpg`);
+								await setAlt(poster.id, titleText);
+								data.featured_image = poster.id;
+							} catch {
+								// No poster is survivable; the player still works.
+							}
+						}
+					}
+
+					step("Saving…", 0.85);
+					const tagSlugs = await ensureTags();
+					const taxonomies: Record<string, string[]> = {};
+					const cats = selectedCategories();
+					if (cats.length) taxonomies.category = cats;
+					if (tagSlugs.length) taxonomies.tag = tagSlugs;
+					created = await createEntry("posts", {
+						data,
+						...(Object.keys(taxonomies).length ? { taxonomies } : {}),
+					});
+				} else {
+					step("Preparing the photo…", 0.05);
+					let source: { blob: Blob; name: string };
+					const file = photoFile.files?.[0];
+					if (file) source = { blob: file, name: file.name };
+					else {
+						const url = photoUrl.value.trim();
+						source = { blob: await fetchImage(url), name: url.split("/").pop()?.split("?")[0] || "photo.jpg" };
+					}
+					const image = await normalisePhoto(source.blob, source.name);
+					step("Uploading…", 0.15);
+					const media = await uploadMedia(image.blob, image.name, (f) => setProgress(0.15 + f * 0.65));
+					await setAlt(media.id, titleText);
+
+					const data: Record<string, unknown> = { title: titleText, image: media.id };
+					if (caption.value.trim()) data.caption = caption.value.trim();
+					if (location.value.trim()) data.location = location.value.trim();
+					if (takenAt.value) {
+						// Noon local, so the date survives any timezone conversion.
+						const [y, m, d] = takenAt.value.split("-").map(Number);
+						const when = new Date(y!, m! - 1, d!, 12).toISOString();
+						data.taken_at = when;
+						// The feed orders photos by when they were taken; publishing at
+						// that date keeps everything else consistent with it.
+						publishBody = { publishedAt: when };
+					}
+					step("Saving…", 0.85);
+					created = await createEntry("photos", { data });
+				}
+
+				if (publish) {
+					step("Publishing…", 0.95);
+					const collection = mode === "video" ? "posts" : "photos";
+					await api(`/_emdash/api/content/${collection}/${created.item.id}/publish`, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify(publishBody),
+					});
+				}
+
+				setProgress(1);
+				finish(publish, created.item);
+			} catch (error) {
+				setFoot((error as Error).message || "Something went wrong.", true);
+				setProgress(null);
+			} finally {
+				busy = false;
+				publishBtn.disabled = !ready().ok;
+				draftBtn.disabled = !ready().ok;
+			}
+		}
+
+		function finish(published: boolean, item: { id: string; slug: string }) {
+			form.hidden = true;
+			done.hidden = false;
+			const collection = mode === "video" ? "posts" : "photos";
+			q<HTMLElement>("[data-done-title]").textContent = published ? "Published" : "Saved as a draft";
+			q<HTMLElement>("[data-done-text]").textContent = published
+				? mode === "video"
+					? "It's live on the feed and under Videos."
+					: "It's live on the feed and under Photos."
+				: "It's in the admin, unpublished, whenever you're ready.";
+			const a = q<HTMLAnchorElement>("[data-done-link]");
+			a.href = published
+				? mode === "video"
+					? `/videos/${item.slug}`
+					: "/photos"
+				: `/_emdash/admin/content/${collection}/${item.id}`;
+			a.textContent = published ? "View" : "Open in admin";
+			done.scrollIntoView({ block: "start" });
+		}
+
+		function reset() {
+			form.reset();
+			form.hidden = false;
+			done.hidden = true;
+			lookup = null;
+			parsed = null;
+			titleTouched = false;
+			captionTouched = false;
+			chosenTags.length = 0;
+			tagsBox.querySelectorAll(".tag").forEach((t) => t.remove());
+			categoriesBox
+				.querySelectorAll('.chip[aria-pressed="true"]')
+				.forEach((c) => c.setAttribute("aria-pressed", "false"));
+			setLinkStatus("");
+			showPreview(null);
+			setProgress(null);
+			render();
+			window.scrollTo({ top: 0 });
+		}
+
+		// ---------- Wiring ----------
+
+		title.addEventListener("input", () => {
+			titleTouched = title.value.length > 0;
+			render();
+		});
+		caption.addEventListener("input", () => {
+			captionTouched = caption.value.length > 0;
+		});
+		form.addEventListener("submit", (event) => {
+			event.preventDefault();
+			submit(true);
+		});
+		draftBtn.addEventListener("click", () => submit(false));
+		q<HTMLElement>("[data-again]").addEventListener("click", reset);
+		for (const tab of root.querySelectorAll<HTMLButtonElement>("[data-mode]")) {
+			tab.addEventListener("click", () => setMode(tab.dataset.mode as Mode));
+		}
+		const moreToggle = q<HTMLButtonElement>("[data-more-toggle]");
+		const more = q<HTMLElement>("[data-more]");
+		moreToggle.addEventListener("click", () => {
+			const open = more.hidden;
+			more.hidden = !open;
+			moreToggle.setAttribute("aria-expanded", String(open));
+			moreToggle.textContent = open ? "Fewer details" : "More details";
+		});
+		q<HTMLButtonElement>("[data-signout]").addEventListener("click", async () => {
+			await api("/_emdash/api/auth/logout", { method: "POST" }).catch(() => {});
+			window.location.href = "/";
+		});
+
+		takenAt.value = toDateInput(new Date());
+		render();
+	}
+</script>

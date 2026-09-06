@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS site_reactions (
 )`;
 
 function db(): D1Database | null {
-	const binding = (env as Record<string, unknown> | undefined)?.DB;
+	const binding = (env as unknown as { DB?: unknown } | undefined)?.DB;
 	return binding && typeof binding === "object" ? (binding as D1Database) : null;
 }
 

@@ -44,6 +44,13 @@ export interface Post {
   content?: PortableTextBlock[];
   excerpt?: string;
   youtube_id?: string;
+  video_file?: { id: string; url?: string; src?: string; filename?: string; mimeType?: string; size?: number; provider?: string; meta?: Record<string, unknown> };
+  source_ref?: string;
+  taken_at?: string;
+  vimeo_id?: string;
+  cta_url?: string;
+  cta_label?: string;
+  transcript?: string;
   createdAt: Date;
   updatedAt: Date;
   publishedAt: Date | null;
