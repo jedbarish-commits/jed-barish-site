@@ -15,6 +15,9 @@ export const prerender = false;
  * A visitor id (a random value the browser keeps in localStorage) makes the
  * toggle idempotent per person. It is not an identity claim and is not
  * treated as one — it only stops the same browser double-counting itself.
+ *
+ * One reaction per person per item, like a poll: choosing another swaps it,
+ * choosing the same one again clears it.
  */
 
 const KINDS = ["like", "love", "ily", "wow"] as const;
@@ -54,7 +57,7 @@ function validTarget(collection: unknown, id: unknown) {
 	);
 }
 
-/** Counts for one item, plus which reactions this visitor has already left. */
+/** Counts for one item, plus the reaction this visitor has left, if any. */
 export const GET: APIRoute = async ({ url }) => {
 	const database = db();
 	if (!database) return json({ counts: {}, mine: [] });
@@ -76,21 +79,23 @@ export const GET: APIRoute = async ({ url }) => {
 	const counts: Record<string, number> = {};
 	for (const row of totals.results ?? []) counts[row.kind] = Number(row.n);
 
-	let mine: string[] = [];
+	let mine: string | null = null;
 	if (visitor) {
+		// Newest first: rows from before the one-per-person rule may still
+		// carry more than one, and the latest is the one that counts.
 		const own = await database
 			.prepare(
-				"SELECT kind FROM site_reactions WHERE collection = ? AND content_id = ? AND visitor = ?",
+				"SELECT kind FROM site_reactions WHERE collection = ? AND content_id = ? AND visitor = ? ORDER BY created_at DESC LIMIT 1",
 			)
 			.bind(collection, id, visitor)
-			.all<{ kind: string }>();
-		mine = (own.results ?? []).map((r) => r.kind);
+			.first<{ kind: string }>();
+		mine = own?.kind ?? null;
 	}
 
 	return json({ counts, mine });
 };
 
-/** Toggle one reaction for one visitor. */
+/** Set, swap or clear this visitor's reaction on one item. */
 export const POST: APIRoute = async ({ request }) => {
 	const database = db();
 	if (!database) return json({ error: "no database" }, 503);
@@ -111,27 +116,34 @@ export const POST: APIRoute = async ({ request }) => {
 
 	await database.prepare(TABLE).run();
 
-	const existing = await database
+	const current = await database
 		.prepare(
-			"SELECT 1 FROM site_reactions WHERE collection = ? AND content_id = ? AND kind = ? AND visitor = ?",
+			"SELECT kind FROM site_reactions WHERE collection = ? AND content_id = ? AND visitor = ? ORDER BY created_at DESC LIMIT 1",
 		)
-		.bind(collection, id, kind, visitor)
-		.first();
+		.bind(collection, id, visitor)
+		.first<{ kind: string }>();
 
-	if (existing) {
-		await database
-			.prepare(
-				"DELETE FROM site_reactions WHERE collection = ? AND content_id = ? AND kind = ? AND visitor = ?",
-			)
-			.bind(collection, id, kind, visitor)
-			.run();
+	// Clearing everything this visitor has on the item covers the swap and the
+	// un-react alike, and tidies any pre-rule duplicates on the way past.
+	const clear = database
+		.prepare(
+			"DELETE FROM site_reactions WHERE collection = ? AND content_id = ? AND visitor = ?",
+		)
+		.bind(collection, id, visitor);
+
+	const mine = current?.kind === kind ? null : kind;
+	if (mine) {
+		// One transaction, so a swap can't be observed as "no reaction".
+		await database.batch([
+			clear,
+			database
+				.prepare(
+					"INSERT INTO site_reactions (collection, content_id, kind, visitor, created_at) VALUES (?, ?, ?, ?, ?)",
+				)
+				.bind(collection, id, kind, visitor, new Date().toISOString()),
+		]);
 	} else {
-		await database
-			.prepare(
-				"INSERT OR IGNORE INTO site_reactions (collection, content_id, kind, visitor, created_at) VALUES (?, ?, ?, ?, ?)",
-			)
-			.bind(collection, id, kind, visitor, new Date().toISOString())
-			.run();
+		await clear.run();
 	}
 
 	const totals = await database
@@ -144,5 +156,5 @@ export const POST: APIRoute = async ({ request }) => {
 	const counts: Record<string, number> = {};
 	for (const row of totals.results ?? []) counts[row.kind] = Number(row.n);
 
-	return json({ counts, active: !existing });
+	return json({ counts, mine });
 };

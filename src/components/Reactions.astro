@@ -2,6 +2,9 @@
 /**
  * Reaction bar. Counts load client-side so the page itself stays cacheable.
  *
+ * One reaction per person per item: tapping another swaps it, tapping the
+ * active one clears it. The bar is a radio group that can also be empty.
+ *
  * 🤟 is the ASL "I love you" handshape — worth having as a first-class
  * reaction on this site rather than only the generic set.
  */
@@ -135,14 +138,25 @@ const KINDS = [
 		const id = bar.dataset.id!;
 		const buttons = [...bar.querySelectorAll<HTMLButtonElement>("[data-kind]")];
 
-		const paint = (counts: Record<string, number>, mine: string[]) => {
+		const paint = (counts: Record<string, number>, mine: string | null) => {
 			for (const button of buttons) {
 				const kind = button.dataset.kind!;
 				const countEl = button.querySelector<HTMLElement>("[data-count]");
 				if (countEl) countEl.textContent = String(counts[kind] ?? 0);
-				button.setAttribute("aria-pressed", String(mine.includes(kind)));
+				button.setAttribute("aria-pressed", String(kind === mine));
 			}
 		};
+
+		const currentCounts = () =>
+			Object.fromEntries(
+				buttons.map((b) => [
+					b.dataset.kind!,
+					Number(b.querySelector("[data-count]")?.textContent ?? 0),
+				]),
+			) as Record<string, number>;
+
+		const currentMine = () =>
+			buttons.find((b) => b.getAttribute("aria-pressed") === "true")?.dataset.kind ?? null;
 
 		// Counts load when the bar first scrolls into view. The feed can hold
 		// sixty panels, and fetching every one on load would be sixty requests
@@ -153,8 +167,12 @@ const KINDS = [
 			loaded = true;
 			const params = new URLSearchParams({ collection, id, visitor });
 			fetch(`/api/reactions?${params}`)
-				.then((r) => (r.ok ? r.json() : null))
-				.then((data) => data && paint(data.counts ?? {}, data.mine ?? []))
+				.then((r) =>
+					r.ok
+						? (r.json() as Promise<{ counts?: Record<string, number>; mine?: string | null }>)
+						: null,
+				)
+				.then((data) => data && paint(data.counts ?? {}, data.mine ?? null))
 				.catch(() => {});
 		};
 
@@ -172,9 +190,14 @@ const KINDS = [
 		for (const button of buttons) {
 			button.addEventListener("click", async () => {
 				const kind = button.dataset.kind!;
-				// Optimistic: flip immediately, reconcile with the server's counts.
-				const wasOn = button.getAttribute("aria-pressed") === "true";
-				button.setAttribute("aria-pressed", String(!wasOn));
+				// Optimistic: move the reaction immediately — the old one down, the
+				// new one up — then reconcile with the server's counts.
+				const before = { counts: currentCounts(), mine: currentMine() };
+				const next = before.mine === kind ? null : kind;
+				const guess = { ...before.counts };
+				if (before.mine) guess[before.mine] = Math.max(0, (guess[before.mine] ?? 0) - 1);
+				if (next) guess[next] = (guess[next] ?? 0) + 1;
+				paint(guess, next);
 
 				try {
 					const res = await fetch("/api/reactions", {
@@ -183,17 +206,13 @@ const KINDS = [
 						body: JSON.stringify({ collection, id, kind, visitor }),
 					});
 					if (!res.ok) throw new Error(String(res.status));
-					const data = await res.json();
-					const mine = buttons
-						.filter((b) =>
-							b === button
-								? data.active
-								: b.getAttribute("aria-pressed") === "true",
-						)
-						.map((b) => b.dataset.kind!);
-					paint(data.counts ?? {}, mine);
+					const data = (await res.json()) as {
+						counts?: Record<string, number>;
+						mine?: string | null;
+					};
+					paint(data.counts ?? {}, data.mine ?? null);
 				} catch {
-					button.setAttribute("aria-pressed", String(wasOn));
+					paint(before.counts, before.mine);
 				}
 			});
 		}
