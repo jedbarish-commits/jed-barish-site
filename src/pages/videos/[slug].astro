@@ -10,7 +10,7 @@ import { Image, PortableText } from "emdash/ui";
 import MobileShell from "../../layouts/MobileShell.astro";
 import Reactions from "../../components/Reactions.astro";
 import { titleEchoesCaption } from "../../utils/text";
-import { splitVimeoRef, vimeoEmbedUrl, youtubeEmbedUrl } from "../../utils/video-links";
+import { vimeoEmbedUrl, youtubeEmbedUrl } from "../../utils/video-links";
 import { resolveBlogSiteIdentity } from "../../utils/site-identity";
 
 const slug = decodeSlug(Astro.params.slug);
@@ -63,7 +63,6 @@ const tags = post.data.terms?.tag ?? [];
 // facade — the visitor came here to watch it.
 const youtubeId = post.data.youtube_id ?? null;
 const vimeoRef = post.data.vimeo_id ?? null;
-const vimeo = vimeoRef ? splitVimeoRef(vimeoRef) : null;
 
 // Only web links become buttons.
 const ctaUrl =
@@ -210,32 +209,9 @@ const publishDate =
 			)
 		}
 
-		{
-			youtubeId && (
-				<a
-					class="yt-link"
-					href={`https://www.youtube.com/watch?v=${youtubeId}`}
-					target="_blank"
-					rel="noopener noreferrer"
-				>
-					Watch on YouTube
-				</a>
-			)
-		}
-		{
-			vimeo && (
-				<a
-					class="yt-link"
-					href={`https://vimeo.com/${vimeo.id}${vimeo.hash ? `/${vimeo.hash}` : ""}`}
-					target="_blank"
-					rel="noopener noreferrer"
-				>
-					Watch on Vimeo
-				</a>
-			)
-		}
-
-		<Reactions collection="posts" contentId={post.data.id} />
+		<div class="react">
+			<Reactions collection="posts" contentId={post.data.id} />
+		</div>
 
 		{
 			otherPosts.length > 0 && (
@@ -434,14 +410,8 @@ const publishDate =
 		font-size: 0.75rem;
 	}
 
-	.yt-link {
-		display: inline-block;
-		margin-top: var(--spacing-5);
-		font-size: 0.8125rem;
-		color: rgb(255 255 255 / 0.5);
-		text-decoration: none;
-		border-bottom: 1px solid rgb(255 255 255 / 0.2);
-		padding-bottom: 1px;
+	.react {
+		margin-top: var(--spacing-6);
 	}
 
 	.more {

@@ -34,7 +34,7 @@ const NEUTRAL = "🙂";
 ---
 
 <div
-	class:list={["reactions", variant, { compact }]}
+	class:list={["reactions", `rx-${variant}`, { compact }]}
 	data-reactions
 	data-collection={collection}
 	data-id={contentId}
@@ -138,10 +138,11 @@ const NEUTRAL = "🙂";
 
 	/* Rail: one round button, the picker floats out to its left. */
 	.rx-toggle {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 3px;
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 44px;
+		height: 44px;
 		padding: 0;
 		border: 0;
 		background: none;
@@ -173,15 +174,22 @@ const NEUTRAL = "🙂";
 		transform: scale(0.94);
 	}
 
+	/* Floats in the gap below the glyph, so the item stays 44px like the rest. */
 	.rx-total {
-		font-size: 0.75rem;
+		position: absolute;
+		top: 100%;
+		left: 50%;
+		transform: translateX(-50%);
+		margin-top: 1px;
+		font-size: 0.6875rem;
+		line-height: 1;
 		font-weight: 600;
 		font-variant-numeric: tabular-nums;
 		text-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
-		min-height: 1em;
+		pointer-events: none;
 	}
 
-	.rail .rx-kinds {
+	.rx-rail .rx-kinds {
 		position: absolute;
 		right: 52px;
 		top: 22px;
@@ -195,17 +203,17 @@ const NEUTRAL = "🙂";
 		box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
 	}
 
-	.rail .rx-kinds button {
+	.rx-rail .rx-kinds button {
 		padding: 7px 10px;
 		border-color: transparent;
 		background: none;
 	}
 
-	.rail .rx-kinds button[aria-pressed="true"] {
+	.rx-rail .rx-kinds button[aria-pressed="true"] {
 		background: rgb(255 255 255 / 0.16);
 	}
 
-	.rail .glyph {
+	.rx-rail .glyph {
 		font-size: 1.125rem;
 	}
 

@@ -383,7 +383,7 @@ export function mountFeed(feed: HTMLElement) {
 			players.get(active)?.fullscreen();
 			return;
 		}
-		if (target.closest("[data-share], [data-reactions], .cap, .rail")) return;
+		if (target.closest("[data-share], [data-reactions], .cap, .action-rail")) return;
 
 		const box = target.closest<HTMLElement>("[data-player]");
 		if (!box) return;
