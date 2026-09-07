@@ -302,6 +302,11 @@ async function alreadyImported(collection = "photos") {
 		for (const item of body?.data?.items ?? []) {
 			const ref = item?.data?.source_ref;
 			if (ref) seen.add(ref);
+			// Carousel slides grouped into one post (scripts/group-carousels.mjs)
+			// keep their own source_ref on the slide.
+			for (const slide of Array.isArray(item?.data?.gallery) ? item.data.gallery : []) {
+				if (slide?.source_ref) seen.add(slide.source_ref);
+			}
 		}
 		cursor = body?.data?.nextCursor;
 	} while (cursor);

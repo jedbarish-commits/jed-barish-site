@@ -1,0 +1,161 @@
+---
+import type { ImageValue } from "emdash";
+import { Image } from "emdash/ui";
+import { fullImageSrc } from "../utils/gallery";
+
+/**
+ * The picture(s) of a photo post, filling whatever box it is placed in.
+ *
+ * One slide renders a plain image. Several become a sideways swipe — its own
+ * scroll-snap track, so a carousel can live inside the vertical feed — with
+ * dots and a 1/5 counter. Sideways is the only gesture added; the vertical
+ * swipe between posts is untouched.
+ */
+interface Props {
+	slides: ImageValue[];
+	alt: string;
+	/** Use the original file (the viewer) instead of the responsive Image. */
+	full?: boolean;
+	/** Load the first slide eagerly (the first panels of the feed). */
+	eager?: boolean;
+}
+
+const { slides, alt, full = false, eager = false } = Astro.props;
+const many = slides.length > 1;
+---
+
+<div class="slides" data-slides>
+	{
+		many ? (
+			<>
+				<div class="track" data-track>
+					{slides.map((s, i) => (
+						<div class="slide">
+							{full ? (
+								<img src={fullImageSrc(s)} alt={i === 0 ? alt : ""} loading={eager && i === 0 ? "eager" : "lazy"} />
+							) : (
+								<Image image={s} loading={eager && i === 0 ? "eager" : "lazy"} />
+							)}
+						</div>
+					))}
+				</div>
+				<div class="dots" aria-hidden="true">
+					{slides.map((_, i) => (
+						<i class:list={{ on: i === 0 }} />
+					))}
+				</div>
+				<span class="count" data-count>
+					1/{slides.length}
+				</span>
+			</>
+		) : full ? (
+			<img src={fullImageSrc(slides[0])} alt={alt} loading={eager ? "eager" : "lazy"} />
+		) : (
+			slides[0] && <Image image={slides[0]} loading={eager ? "eager" : "lazy"} />
+		)
+	}
+</div>
+
+<style>
+	.slides {
+		position: absolute;
+		inset: 0;
+	}
+
+	.slides > :global(img),
+	.slide :global(img) {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+		display: block;
+	}
+
+	.track {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		overflow-x: auto;
+		overflow-y: hidden;
+		scroll-snap-type: x mandatory;
+		/* A swipe past the last slide must not turn into a page gesture. */
+		overscroll-behavior-x: contain;
+		-webkit-overflow-scrolling: touch;
+		scrollbar-width: none;
+	}
+
+	.track::-webkit-scrollbar {
+		display: none;
+	}
+
+	.slide {
+		position: relative;
+		flex: 0 0 100%;
+		height: 100%;
+		scroll-snap-align: start;
+		scroll-snap-stop: always;
+	}
+
+	.dots {
+		position: absolute;
+		left: 50%;
+		bottom: 10px;
+		transform: translateX(-50%);
+		display: flex;
+		gap: 5px;
+		padding: 5px 7px;
+		border-radius: 999px;
+		background: rgb(0 0 0 / 0.35);
+		pointer-events: none;
+	}
+
+	.dots i {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: rgb(255 255 255 / 0.4);
+		transition: background 150ms;
+	}
+
+	.dots i.on {
+		background: #fff;
+	}
+
+	.count {
+		position: absolute;
+		top: 10px;
+		right: 10px;
+		padding: 4px 9px;
+		border-radius: 999px;
+		background: rgb(0 0 0 / 0.45);
+		color: #fff;
+		font-size: 0.75rem;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+		pointer-events: none;
+	}
+</style>
+
+<script>
+	// Dots and counter follow the slide that is in view.
+	for (const root of document.querySelectorAll<HTMLElement>("[data-slides]")) {
+		const track = root.querySelector<HTMLElement>("[data-track]");
+		if (!track) continue;
+		const dots = [...root.querySelectorAll<HTMLElement>(".dots i")];
+		const count = root.querySelector<HTMLElement>("[data-count]");
+		let frame = 0;
+		track.addEventListener(
+			"scroll",
+			() => {
+				cancelAnimationFrame(frame);
+				frame = requestAnimationFrame(() => {
+					const i = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+					dots.forEach((d, n) => d.classList.toggle("on", n === i));
+					if (count) count.textContent = `${i + 1}/${dots.length}`;
+				});
+			},
+			{ passive: true },
+		);
+	}
+</script>

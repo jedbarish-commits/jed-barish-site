@@ -82,9 +82,13 @@ const displayName = user.name || user.email;
 			<section data-pane="photo" hidden>
 				<label class="field">
 					<span class="label">Photo</span>
-					<input type="file" name="photoFile" accept="image/*" data-photo-file />
-					<span class="hint">Anything from the camera roll. Large photos are resized before upload.</span>
+					<input type="file" name="photoFile" accept="image/*" multiple data-photo-file />
+					<span class="hint">
+						Pick one or several — several become one post you swipe through. Large photos are
+						resized before upload.
+					</span>
 				</label>
+				<p class="status" data-photo-status aria-live="polite"></p>
 
 				<div class="or"><span>or</span></div>
 
@@ -649,6 +653,7 @@ const displayName = user.name || user.email;
 		const linkStatus = q<HTMLElement>("[data-link-status]");
 		const videoFile = q<HTMLInputElement>("[data-video-file]");
 		const photoFile = q<HTMLInputElement>("[data-photo-file]");
+		const photoStatus = q<HTMLElement>("[data-photo-status]");
 		const photoUrl = q<HTMLInputElement>("[data-photo-url]");
 		const preview = q<HTMLElement>("[data-preview]");
 		const previewImg = q<HTMLImageElement>("[data-preview-img]");
@@ -783,7 +788,7 @@ const displayName = user.name || user.email;
 				const needs = [!hasSource && "a video link or file", !hasTitle && "a title"].filter(Boolean);
 				return { ok: false, why: `Needs ${needs.join(" and ")}.` };
 			}
-			const hasSource = !!photoFile.files?.[0] || photoUrl.value.trim().length > 0;
+			const hasSource = !!photoFile.files?.length || photoUrl.value.trim().length > 0;
 			if (hasSource && hasTitle) return { ok: true, why: "" };
 			const needs = [!hasSource && "a photo or image URL", !hasTitle && "a title"].filter(Boolean);
 			return { ok: false, why: `Needs ${needs.join(" and ")}.` };
@@ -898,15 +903,18 @@ const displayName = user.name || user.email;
 		});
 
 		photoFile.addEventListener("change", () => {
-			const file = photoFile.files?.[0];
+			const files = [...(photoFile.files ?? [])];
+			const file = files[0];
 			if (!file) {
 				showPreview(null);
+				photoStatus.textContent = "";
 				render();
 				return;
 			}
 			photoUrl.value = "";
 			showPreview("image", URL.createObjectURL(file));
 			if (!takenAt.value) takenAt.value = toDateInput(new Date(file.lastModified || Date.now()));
+			photoStatus.textContent = files.length > 1 ? `${files.length} photos — the first is the cover.` : "";
 			render();
 		});
 
@@ -1192,19 +1200,41 @@ const displayName = user.name || user.email;
 					});
 				} else {
 					step("Preparing the photo…", 0.05);
-					let source: { blob: Blob; name: string };
-					const file = photoFile.files?.[0];
-					if (file) source = { blob: file, name: file.name };
-					else {
+					const sources: { blob: Blob; name: string }[] = [];
+					const files = [...(photoFile.files ?? [])];
+					if (files.length) {
+						for (const f of files) sources.push({ blob: f, name: f.name });
+					} else {
 						const url = photoUrl.value.trim();
-						source = { blob: await fetchImage(url), name: url.split("/").pop()?.split("?")[0] || "photo.jpg" };
+						sources.push({ blob: await fetchImage(url), name: url.split("/").pop()?.split("?")[0] || "photo.jpg" });
 					}
-					const image = await normalisePhoto(source.blob, source.name);
-					step("Uploading…", 0.15);
-					const media = await uploadMedia(image.blob, image.name, (f) => setProgress(0.15 + f * 0.65));
-					await setAlt(media.id, titleText);
+
+					// Several photos become one post: the first is the cover, all of
+					// them go in the gallery as full image records (a JSON field isn't
+					// hydrated the way an image field is).
+					const uploaded: Record<string, unknown>[] = [];
+					for (const [n, source] of sources.entries()) {
+						const image = await normalisePhoto(source.blob, source.name);
+						step(sources.length > 1 ? `Uploading ${n + 1} of ${sources.length}…` : "Uploading…", 0.15);
+						const media = (await uploadMedia(image.blob, image.name, (f) =>
+							setProgress(0.15 + ((n + f) / sources.length) * 0.65),
+						)) as Record<string, unknown>;
+						await setAlt(media.id as string, titleText);
+						uploaded.push({
+							provider: "local",
+							id: media.id,
+							filename: media.filename,
+							mimeType: media.mimeType,
+							width: media.width,
+							height: media.height,
+							alt: titleText,
+							meta: { storageKey: media.storageKey },
+						});
+					}
+					const media = uploaded[0]!;
 
 					const data: Record<string, unknown> = { title: titleText, image: media.id };
+					if (uploaded.length > 1) data.gallery = uploaded;
 					if (caption.value.trim()) data.caption = caption.value.trim();
 					if (location.value.trim()) data.location = location.value.trim();
 					if (takenAt.value) {

@@ -5,6 +5,7 @@ import VideoPanel from "../components/VideoPanel.astro";
 import PhotoPanel from "../components/PhotoPanel.astro";
 import CaptionSheet from "../components/CaptionSheet.astro";
 import { resolveBlogSiteIdentity } from "../utils/site-identity";
+import { slidesOf } from "../utils/gallery";
 
 // The feed is everything, newest first — videos and photos interleaved. They
 // live in separate collections so each can be managed on its own, and are
@@ -96,7 +97,7 @@ const formatDate = (value: Date | string | null | undefined) =>
 					) : (
 						<PhotoPanel
 							title={item.entry.data.title ?? "Untitled"}
-							image={item.entry.data.image}
+							slides={slidesOf(item.entry.data)}
 							caption={item.entry.data.caption}
 							location={item.entry.data.location}
 							date={formatDate(

@@ -1,18 +1,19 @@
 ---
 import type { ImageValue } from "emdash";
-import { Image } from "emdash/ui";
 import ActionRail from "./ActionRail.astro";
 import FeedCaption from "./FeedCaption.astro";
+import PhotoSlides from "./PhotoSlides.astro";
 import { titleEchoesCaption } from "../utils/text";
 
 /**
  * One full-viewport photo panel in the swipe feed, laid out exactly like
- * VideoPanel so the two read as one feed. The box takes the photo's own
- * aspect ratio — a portrait shot isn't chopped to a landscape frame.
+ * VideoPanel so the two read as one feed. The box takes the cover's own
+ * aspect ratio — a portrait shot isn't chopped to a landscape frame — and a
+ * carousel swipes sideways inside it.
  */
 interface Props {
 	title: string;
-	image: ImageValue | null | undefined;
+	slides: ImageValue[];
 	caption?: string | null;
 	location?: string | null;
 	date?: string | null;
@@ -21,9 +22,10 @@ interface Props {
 	contentId: string;
 }
 
-const { title, image, caption, location, date, shareUrl, index, contentId } = Astro.props;
+const { title, slides, caption, location, date, shareUrl, index, contentId } = Astro.props;
 
-const ratio = image?.width && image?.height ? image.width / image.height : 1;
+const cover = slides[0];
+const ratio = cover?.width && cover?.height ? cover.width / cover.height : 1;
 // The title is usually just the caption's first line, clipped; show the
 // caption's full text instead of both.
 const showTitle = !titleEchoesCaption(title, caption);
@@ -33,7 +35,7 @@ const kicker = [location, date].filter(Boolean).join(" · ");
 <section class="panel" data-panel aria-label={title}>
 	<div class="media">
 		<div class="box" style={`--arn:${ratio.toFixed(4)}`}>
-			<Image image={image} class="photo" loading={index < 2 ? "eager" : "lazy"} />
+			<PhotoSlides slides={slides} alt={title} eager={index < 2} />
 		</div>
 		<ActionRail collection="photos" contentId={contentId} shareUrl={shareUrl} shareTitle={title} />
 		{
@@ -78,15 +80,6 @@ const kicker = [location, date].filter(Boolean).join(" · ");
 		background: #000;
 		border-radius: 12px;
 		overflow: hidden;
-	}
-
-	.box :global(.photo) {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		object-fit: contain;
-		display: block;
 	}
 
 	.swipe-hint {
