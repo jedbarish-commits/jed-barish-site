@@ -1111,29 +1111,46 @@ const displayName = user.name || user.email;
 
 		// ---------- Submit ----------
 
-		const slugify = (s: string) =>
-			s
+		/**
+		 * URL slug from a title, cut at a word boundary. Kept short: long
+		 * captions make long URLs, and see createEntry for why the length
+		 * matters to EmDash itself.
+		 */
+		const slugify = (s: string, max = 60) => {
+			const full = s
 				.toLowerCase()
 				.normalize("NFKD")
 				.replace(/[̀-ͯ]/g, "")
 				.replace(/[^a-z0-9]+/g, "-")
-				.replace(/^-+|-+$/g, "")
-				.slice(0, 80);
+				.replace(/^-+|-+$/g, "");
+			if (full.length <= max) return full;
+			const cut = full.slice(0, max);
+			const lastBreak = cut.lastIndexOf("-");
+			return (lastBreak > max / 2 ? cut.slice(0, lastBreak) : cut).replace(/-+$/, "");
+		};
 
+		/**
+		 * Always sends a slug. Left to itself, EmDash 1.0 resolves a taken slug
+		 * with `slug LIKE '<slug>-%'`, and D1 rejects LIKE patterns over 50 bytes
+		 * — so a repeated long title failed outright with a generic 500. With an
+		 * explicit slug EmDash skips that lookup; a clash hits the unique
+		 * constraint instead and comes back as SLUG_CONFLICT, which we retry
+		 * with a suffix.
+		 */
 		async function createEntry(collection: "posts" | "photos", body: Record<string, unknown>) {
-			const post = (extra: Record<string, unknown> = {}) =>
+			const post = (slug: string) =>
 				api<{ item: { id: string; slug: string } }>(`/_emdash/api/content/${collection}`, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ ...body, ...extra }),
+					body: JSON.stringify({ ...body, slug }),
 				});
+			const stem = slugify(String((body.data as Record<string, unknown>).title ?? "")) || "post";
 			try {
-				return await post();
+				return await post(stem);
 			} catch (error) {
 				// Slug taken (a repeated title) — retry with a unique suffix.
 				if (!/slug/i.test((error as Error).message)) throw error;
-				const stem = slugify(String((body.data as Record<string, unknown>).title ?? "post")) || "post";
-				return post({ slug: `${stem}-${Date.now().toString(36)}` });
+				return post(`${stem}-${Date.now().toString(36)}`);
 			}
 		}
 
