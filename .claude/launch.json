@@ -3,12 +3,10 @@
 	"configurations": [
 		{
 			"name": "jed-barish-site",
-			"runtimeExecutable": "/usr/local/bin/node",
+			"runtimeExecutable": "/bin/zsh",
 			"runtimeArgs": [
-				"/Users/jedbarish/Projects/jed-barish-site/node_modules/astro/bin/astro.mjs",
-				"dev",
-				"--root",
-				"/Users/jedbarish/Projects/jed-barish-site"
+				"-lic",
+				"cd /Users/jedbarish/Projects/jed-barish-site && exec pnpm dev"
 			],
 			"port": 4321
 		}
